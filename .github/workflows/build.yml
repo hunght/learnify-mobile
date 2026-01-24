@@ -2,7 +2,6 @@ name: Build
 
 on:
   push:
-    branches: [main]
     tags:
       - "v*"
   workflow_dispatch:
@@ -10,7 +9,7 @@ on:
       platform:
         description: "Platform to build"
         required: true
-        default: "all"
+        default: "android"
         type: choice
         options:
           - all
@@ -29,6 +28,8 @@ jobs:
   build:
     name: EAS Build
     runs-on: ubuntu-latest
+    # Only run if EXPO_TOKEN is set
+    if: ${{ secrets.EXPO_TOKEN != '' }}
 
     steps:
       - name: Checkout
@@ -53,7 +54,7 @@ jobs:
         id: params
         run: |
           # Default values
-          PLATFORM="${{ github.event.inputs.platform || 'all' }}"
+          PLATFORM="${{ github.event.inputs.platform || 'android' }}"
           PROFILE="${{ github.event.inputs.profile || 'preview' }}"
 
           # If it's a tag push, use production profile
