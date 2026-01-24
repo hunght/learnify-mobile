@@ -1,9 +1,6 @@
-name: Build
+name: Build (Dev)
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       platform:
@@ -14,13 +11,12 @@ on:
         options:
           - android
           - ios
-          - all
 
 jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' || startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.event.inputs.platform == 'android' }}
 
     steps:
       - name: Checkout
@@ -44,28 +40,20 @@ jobs:
       - name: Generate native code
         run: npx expo prebuild --platform android --clean
 
-      - name: Build Android APK
+      - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: learnify-mobile-android
-          path: android/app/build/outputs/apk/release/*.apk
-
-      - name: Upload to Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: android/app/build/outputs/apk/release/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: learnify-mobile-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
 
   build-ios:
-    name: Build iOS
+    name: Build iOS Simulator
     runs-on: macos-latest
-    if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' || startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ github.event.inputs.platform == 'ios' }}
 
     steps:
       - name: Checkout
@@ -87,32 +75,24 @@ jobs:
         working-directory: ios
         run: pod install
 
-      - name: Build iOS (Simulator)
+      - name: Build iOS Simulator
         working-directory: ios
         run: |
           xcodebuild \
             -workspace LearnifyTube.xcworkspace \
             -scheme LearnifyTube \
-            -configuration Release \
+            -configuration Debug \
             -sdk iphonesimulator \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Create Simulator App Archive
         run: |
-          cd ios/build/Build/Products/Release-iphonesimulator
-          zip -r LearnifyTube-ios-simulator.zip LearnifyTube.app
+          cd ios/build/Build/Products/Debug-iphonesimulator
+          zip -r LearnifyTube-simulator.zip LearnifyTube.app
 
       - name: Upload iOS Simulator Build
         uses: actions/upload-artifact@v4
         with:
-          name: learnify-mobile-ios-simulator
-          path: ios/build/Build/Products/Release-iphonesimulator/LearnifyTube-ios-simulator.zip
-
-      - name: Upload to Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ios/build/Build/Products/Release-iphonesimulator/LearnifyTube-ios-simulator.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: learnify-mobile-simulator.zip
+          path: ios/build/Build/Products/Debug-iphonesimulator/LearnifyTube-simulator.zip

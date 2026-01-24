@@ -41,22 +41,77 @@ npm run android
 4. Note the IP address displayed
 5. Open the mobile app and enter the IP address
 
-## Build
+## CI/CD (100% Free)
 
-### Automated Builds (GitHub Actions)
+All CI/CD runs on **free GitHub Actions** - no paid services required.
 
-This project uses **free GitHub Actions** for building - no paid services required.
+### Workflows
 
-**Trigger a build:**
-1. Go to Actions tab in GitHub
-2. Select "Build" workflow
-3. Click "Run workflow"
-4. Choose platform (android/ios/all)
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| **CI** | Push/PR to main | Type check |
+| **Build** | Manual | Build APK/iOS for testing |
+| **Release** | Tags (`v*`) or manual | Build + submit to stores |
 
-**Automatic releases:**
-- Push a tag like `v1.0.0` to automatically build and create a GitHub Release with APK/iOS artifacts
+### Quick Release
 
-### Local Build
+```bash
+# Create and push a tag to trigger auto-release
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This will:
+1. Build Android AAB + APK
+2. Build iOS IPA
+3. Upload to Google Play (internal track)
+4. Upload to TestFlight
+5. Create GitHub Release with artifacts
+
+### Store Submission Costs
+
+| Item | Cost | Notes |
+|------|------|-------|
+| GitHub Actions | **FREE** | Unlimited for public repos |
+| Google Play Developer | **$25** | One-time fee |
+| Apple Developer Program | **$99/year** | Required for App Store |
+
+### GitHub Secrets Required
+
+To enable automatic store submission, add these secrets to your repo:
+
+#### Android (Google Play)
+
+| Secret | Description |
+|--------|-------------|
+| `ANDROID_KEYSTORE_BASE64` | Base64 encoded release keystore |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias |
+| `ANDROID_KEY_PASSWORD` | Key password |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play API service account JSON |
+
+**Setup:**
+```bash
+# Generate keystore
+keytool -genkeypair -v -keystore release.keystore -alias learnify -keyalg RSA -keysize 2048 -validity 10000
+
+# Encode to base64
+base64 -i release.keystore | pbcopy  # macOS
+```
+
+#### iOS (App Store)
+
+| Secret | Description |
+|--------|-------------|
+| `APPLE_CERTIFICATE_BASE64` | Base64 encoded .p12 certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | Certificate password |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 encoded .mobileprovision |
+| `APPLE_CODE_SIGN_IDENTITY` | e.g., "Apple Distribution: Your Name" |
+| `APPLE_PROVISIONING_PROFILE_NAME` | Profile name |
+| `APPLE_ID` | Your Apple ID email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com |
+
+## Local Build
 
 ```bash
 # Generate native projects
@@ -64,7 +119,7 @@ npx expo prebuild
 
 # Build Android APK
 cd android && ./gradlew assembleRelease
-# APK will be at: android/app/build/outputs/apk/release/
+# Output: android/app/build/outputs/apk/release/
 
 # Build iOS (macOS only)
 cd ios && pod install
@@ -73,17 +128,6 @@ xcodebuild -workspace LearnifyTube.xcworkspace \
   -configuration Release \
   -sdk iphoneos
 ```
-
-### Signing for Distribution
-
-**Android:**
-1. Generate a keystore: `keytool -genkeypair -v -keystore release.keystore -alias learnify -keyalg RSA -keysize 2048 -validity 10000`
-2. Add to `android/app/build.gradle` signing config
-3. Build with `./gradlew assembleRelease`
-
-**iOS:**
-- Requires Apple Developer account ($99/year)
-- Or distribute via TestFlight/Ad-hoc
 
 ## Project Structure
 
@@ -102,20 +146,12 @@ xcodebuild -workspace LearnifyTube.xcworkspace \
 
 ## Tech Stack
 
-- **Framework**: React Native + Expo (managed workflow)
+- **Framework**: React Native + Expo
 - **Navigation**: Expo Router
 - **State Management**: Zustand
 - **Video Player**: expo-video
 - **File System**: expo-file-system
-
-## CI/CD
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| CI | Push/PR to main | Type check, Expo Doctor |
-| Build | Tags (`v*`) or manual | Build APK/iOS, upload to Release |
-
-All builds are **free** using GitHub Actions runners (unlimited for public repos).
+- **CI/CD**: GitHub Actions + Fastlane
 
 ## Contributing
 
