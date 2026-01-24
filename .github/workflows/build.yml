@@ -1,0 +1,73 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+      profile:
+        description: "Build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+
+jobs:
+  build:
+    name: EAS Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine build parameters
+        id: params
+        run: |
+          # Default values
+          PLATFORM="${{ github.event.inputs.platform || 'all' }}"
+          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+
+          # If it's a tag push, use production profile
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            PROFILE="production"
+          fi
+
+          echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
+          echo "profile=$PROFILE" >> $GITHUB_OUTPUT
+
+      - name: Build Android
+        if: steps.params.outputs.platform == 'all' || steps.params.outputs.platform == 'android'
+        run: eas build --platform android --profile ${{ steps.params.outputs.profile }} --non-interactive
+
+      - name: Build iOS
+        if: steps.params.outputs.platform == 'all' || steps.params.outputs.platform == 'ios'
+        run: eas build --platform ios --profile ${{ steps.params.outputs.profile }} --non-interactive
