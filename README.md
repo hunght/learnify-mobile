@@ -15,7 +15,6 @@ Mobile companion app for LearnifyTube - sync and watch your downloaded YouTube v
 ### Prerequisites
 
 - Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
 - iOS Simulator (macOS) or Android Emulator
 
 ### Installation
@@ -44,24 +43,47 @@ npm run android
 
 ## Build
 
-This project uses [EAS Build](https://docs.expo.dev/build/introduction/) for building production apps.
+### Automated Builds (GitHub Actions)
+
+This project uses **free GitHub Actions** for building - no paid services required.
+
+**Trigger a build:**
+1. Go to Actions tab in GitHub
+2. Select "Build" workflow
+3. Click "Run workflow"
+4. Choose platform (android/ios/all)
+
+**Automatic releases:**
+- Push a tag like `v1.0.0` to automatically build and create a GitHub Release with APK/iOS artifacts
+
+### Local Build
 
 ```bash
-# Install EAS CLI
-npm install -g eas-cli
+# Generate native projects
+npx expo prebuild
 
-# Login to Expo
-eas login
+# Build Android APK
+cd android && ./gradlew assembleRelease
+# APK will be at: android/app/build/outputs/apk/release/
 
-# Build for Android (APK for testing)
-eas build --platform android --profile preview
-
-# Build for iOS (requires Apple Developer account)
-eas build --platform ios --profile preview
-
-# Build for production
-eas build --platform all --profile production
+# Build iOS (macOS only)
+cd ios && pod install
+xcodebuild -workspace LearnifyTube.xcworkspace \
+  -scheme LearnifyTube \
+  -configuration Release \
+  -sdk iphoneos
 ```
+
+### Signing for Distribution
+
+**Android:**
+1. Generate a keystore: `keytool -genkeypair -v -keystore release.keystore -alias learnify -keyalg RSA -keysize 2048 -validity 10000`
+2. Add to `android/app/build.gradle` signing config
+3. Build with `./gradlew assembleRelease`
+
+**iOS:**
+- Requires Apple Developer account ($99/year)
+- Or distribute via TestFlight/Ad-hoc
 
 ## Project Structure
 
@@ -80,11 +102,27 @@ eas build --platform all --profile production
 
 ## Tech Stack
 
-- **Framework**: React Native + Expo
+- **Framework**: React Native + Expo (managed workflow)
 - **Navigation**: Expo Router
 - **State Management**: Zustand
 - **Video Player**: expo-video
 - **File System**: expo-file-system
+
+## CI/CD
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| CI | Push/PR to main | Type check, Expo Doctor |
+| Build | Tags (`v*`) or manual | Build APK/iOS, upload to Release |
+
+All builds are **free** using GitHub Actions runners (unlimited for public repos).
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 

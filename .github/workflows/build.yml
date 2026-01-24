@@ -12,24 +12,15 @@ on:
         default: "android"
         type: choice
         options:
-          - all
           - android
           - ios
-      profile:
-        description: "Build profile"
-        required: true
-        default: "preview"
-        type: choice
-        options:
-          - preview
-          - production
+          - all
 
 jobs:
-  build:
-    name: EAS Build
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    # Only run if EXPO_TOKEN is set
-    if: ${{ secrets.EXPO_TOKEN != '' }}
+    if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' || startsWith(github.ref, 'refs/tags/') }}
 
     steps:
       - name: Checkout
@@ -41,34 +32,87 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: Setup Expo
-        uses: expo/expo-github-action@v8
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+          distribution: "zulu"
+          java-version: "17"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Determine build parameters
-        id: params
+      - name: Generate native code
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build Android APK
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: learnify-mobile-android
+          path: android/app/build/outputs/apk/release/*.apk
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: android/app/build/outputs/apk/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-ios:
+    name: Build iOS
+    runs-on: macos-latest
+    if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' || startsWith(github.ref, 'refs/tags/') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate native code
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build iOS (Simulator)
+        working-directory: ios
         run: |
-          # Default values
-          PLATFORM="${{ github.event.inputs.platform || 'android' }}"
-          PROFILE="${{ github.event.inputs.profile || 'preview' }}"
+          xcodebuild \
+            -workspace LearnifyTube.xcworkspace \
+            -scheme LearnifyTube \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
 
-          # If it's a tag push, use production profile
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            PROFILE="production"
-          fi
+      - name: Create Simulator App Archive
+        run: |
+          cd ios/build/Build/Products/Release-iphonesimulator
+          zip -r LearnifyTube-ios-simulator.zip LearnifyTube.app
 
-          echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
-          echo "profile=$PROFILE" >> $GITHUB_OUTPUT
+      - name: Upload iOS Simulator Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: learnify-mobile-ios-simulator
+          path: ios/build/Build/Products/Release-iphonesimulator/LearnifyTube-ios-simulator.zip
 
-      - name: Build Android
-        if: steps.params.outputs.platform == 'all' || steps.params.outputs.platform == 'android'
-        run: eas build --platform android --profile ${{ steps.params.outputs.profile }} --non-interactive
-
-      - name: Build iOS
-        if: steps.params.outputs.platform == 'all' || steps.params.outputs.platform == 'ios'
-        run: eas build --platform ios --profile ${{ steps.params.outputs.profile }} --non-interactive
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ios/build/Build/Products/Release-iphonesimulator/LearnifyTube-ios-simulator.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
