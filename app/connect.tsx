@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,16 +14,80 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../stores/connection";
 import { api } from "../services/api";
 import { useLibraryStore } from "../stores/library";
-import type { RemoteVideo } from "../types";
+import { useDownloadStore } from "../stores/downloads";
+import { startScanning, stopScanning } from "../services/p2p/discovery";
+import type { RemoteVideo, DiscoveredPeer } from "../types";
 
 export default function ConnectScreen() {
   const [ipAddress, setIpAddress] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [remoteVideos, setRemoteVideos] = useState<RemoteVideo[]>([]);
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
+  const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredPeer[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
 
-  const { setServerUrl, serverUrl } = useConnectionStore();
-  const { addVideo, updateVideo } = useLibraryStore();
+  const { setServerUrl } = useConnectionStore();
+  const { addVideo } = useLibraryStore();
+  const queueDownload = useDownloadStore((state) => state.queueDownload);
+
+  // Start mDNS scanning on mount
+  useEffect(() => {
+    console.log("[Connect] Starting mDNS scanning for desktop devices");
+    setIsScanning(true);
+    startScanning({
+      onPeerFound: (peer) => {
+        console.log("[Connect] Peer found:", peer.name, peer.host, peer.port);
+        setDiscoveredDevices((prev) => {
+          const existing = prev.find((p) => p.name === peer.name);
+          if (existing) {
+            console.log("[Connect] Updating existing peer:", peer.name);
+            return prev.map((p) => (p.name === peer.name ? peer : p));
+          }
+          console.log("[Connect] Adding new peer:", peer.name);
+          return [...prev, peer];
+        });
+      },
+      onPeerLost: (name) => {
+        console.log("[Connect] Peer lost:", name);
+        setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
+      },
+      onError: (error) => {
+        console.error("[Connect] mDNS scan error:", error);
+      },
+    });
+
+    return () => {
+      console.log("[Connect] Stopping mDNS scanning");
+      stopScanning();
+      setIsScanning(false);
+    };
+  }, []);
+
+  const handleConnectToDevice = async (device: DiscoveredPeer) => {
+    const url = `http://${device.host}:${device.port}`;
+    console.log("[Connect] Connecting to discovered device:", device.name, url);
+    setIsConnecting(true);
+
+    try {
+      console.log("[Connect] Fetching server info...");
+      const info = await api.getInfo(url);
+      console.log("[Connect] Connected to:", info.name, "Videos:", info.videoCount);
+
+      setServerUrl(url);
+      console.log("[Connect] Fetching video list...");
+      const videosResponse = await api.getVideos(url);
+      console.log("[Connect] Got", videosResponse.videos.length, "videos");
+      setRemoteVideos(videosResponse.videos);
+    } catch (error) {
+      console.error("[Connect] Connection failed:", error);
+      Alert.alert(
+        "Connection Failed",
+        "Could not connect to the device. Please try again."
+      );
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   const handleConnect = async () => {
     if (!ipAddress.trim()) {
@@ -63,29 +127,47 @@ export default function ConnectScreen() {
     });
   };
 
-  const handleDownloadSelected = async () => {
+  const handleDownloadSelected = () => {
+    console.log(
+      "[Connect] handleDownloadSelected called, selected:",
+      selectedVideos.size
+    );
+
     if (selectedVideos.size === 0) {
       Alert.alert("No Videos Selected", "Please select videos to download");
       return;
     }
 
-    // Add selected videos to library
+    // Queue each selected video for download
     for (const videoId of selectedVideos) {
       const video = remoteVideos.find((v) => v.id === videoId);
-      if (video) {
-        addVideo({
-          id: video.id,
-          title: video.title,
-          channelTitle: video.channelTitle,
-          duration: video.duration,
-          thumbnailUrl: video.thumbnailUrl,
-          status: "pending",
-        });
-      }
+      if (!video) continue;
+
+      console.log("[Connect] Queueing download:", video.title);
+
+      // Add to library (without localPath initially)
+      addVideo({
+        id: video.id,
+        title: video.title,
+        channelTitle: video.channelTitle,
+        duration: video.duration,
+        thumbnailUrl: video.thumbnailUrl,
+      });
+
+      // Queue for download
+      queueDownload(video.id, {
+        title: video.title,
+        channelTitle: video.channelTitle,
+        duration: video.duration,
+        thumbnailUrl: video.thumbnailUrl,
+      });
     }
 
-    // Navigate back and start downloads
-    router.back();
+    Alert.alert(
+      "Downloads Queued",
+      `${selectedVideos.size} video${selectedVideos.size !== 1 ? "s" : ""} added to download queue`,
+      [{ text: "OK", onPress: () => router.back() }]
+    );
   };
 
   return (
@@ -93,8 +175,55 @@ export default function ConnectScreen() {
       <View style={styles.content}>
         {remoteVideos.length === 0 ? (
           <>
+            {/* Discovered Devices Section */}
+            {discoveredDevices.length > 0 && (
+              <View style={styles.discoveredSection}>
+                <View style={styles.discoveredHeader}>
+                  <Text style={styles.discoveredTitle}>Discovered Devices</Text>
+                  {isScanning && (
+                    <ActivityIndicator color="#4ade80" size="small" />
+                  )}
+                </View>
+                {discoveredDevices.map((device) => (
+                  <Pressable
+                    key={device.name}
+                    style={styles.deviceItem}
+                    onPress={() => handleConnectToDevice(device)}
+                    disabled={isConnecting}
+                  >
+                    <View style={styles.deviceIcon}>
+                      <Text style={styles.deviceIconText}>💻</Text>
+                    </View>
+                    <View style={styles.deviceInfo}>
+                      <Text style={styles.deviceName}>{device.name}</Text>
+                      <Text style={styles.deviceMeta}>
+                        {device.videoCount} videos • {device.host}
+                      </Text>
+                    </View>
+                    {isConnecting ? (
+                      <ActivityIndicator color="#e94560" size="small" />
+                    ) : (
+                      <Text style={styles.connectArrow}>›</Text>
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {/* Divider */}
+            {discoveredDevices.length > 0 && (
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or enter manually</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            )}
+
+            {/* Manual IP Entry */}
             <Text style={styles.instruction}>
-              Enter the IP address shown in your LearnifyTube desktop app:
+              {discoveredDevices.length === 0
+                ? "Enter the IP address shown in your LearnifyTube desktop app:"
+                : "Connect using IP address:"}
             </Text>
 
             <View style={styles.inputContainer}>
@@ -122,15 +251,27 @@ export default function ConnectScreen() {
               )}
             </Pressable>
 
-            <View style={styles.helpSection}>
-              <Text style={styles.helpTitle}>How to find IP address:</Text>
-              <Text style={styles.helpText}>
-                1. Open LearnifyTube on your computer{"\n"}
-                2. Go to Settings &gt; Sync{"\n"}
-                3. Enable "Allow mobile sync"{"\n"}
-                4. Copy the IP address shown
-              </Text>
-            </View>
+            {discoveredDevices.length === 0 && (
+              <View style={styles.helpSection}>
+                <Text style={styles.helpTitle}>How to find IP address:</Text>
+                <Text style={styles.helpText}>
+                  1. Open LearnifyTube on your computer{"\n"}
+                  2. Go to Settings &gt; Sync{"\n"}
+                  3. Enable "Allow mobile sync"{"\n"}
+                  4. Copy the IP address shown
+                </Text>
+              </View>
+            )}
+
+            {/* Scanning indicator when no devices found */}
+            {discoveredDevices.length === 0 && isScanning && (
+              <View style={styles.scanningSection}>
+                <ActivityIndicator color="#a0a0a0" size="small" />
+                <Text style={styles.scanningText}>
+                  Scanning for nearby devices...
+                </Text>
+              </View>
+            )}
           </>
         ) : (
           <>
@@ -213,6 +354,75 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  discoveredSection: {
+    marginBottom: 20,
+  },
+  discoveredHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  discoveredTitle: {
+    color: "#4ade80",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  deviceItem: {
+    flexDirection: "row",
+    backgroundColor: "#1a2e1a",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#2d4a2d",
+  },
+  deviceIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#2d4a2d",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  deviceIconText: {
+    fontSize: 22,
+  },
+  deviceInfo: {
+    flex: 1,
+  },
+  deviceName: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+  deviceMeta: {
+    color: "#a0a0a0",
+    fontSize: 12,
+  },
+  connectArrow: {
+    color: "#4ade80",
+    fontSize: 24,
+    fontWeight: "300",
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#2d2d44",
+  },
+  dividerText: {
+    color: "#666",
+    fontSize: 12,
+    marginHorizontal: 12,
+  },
   instruction: {
     color: "#a0a0a0",
     fontSize: 16,
@@ -262,6 +472,17 @@ const styles = StyleSheet.create({
     color: "#a0a0a0",
     fontSize: 14,
     lineHeight: 22,
+  },
+  scanningSection: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
+    gap: 8,
+  },
+  scanningText: {
+    color: "#a0a0a0",
+    fontSize: 13,
   },
   sectionTitle: {
     color: "#fff",

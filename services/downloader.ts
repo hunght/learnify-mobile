@@ -1,6 +1,16 @@
+import * as FileSystemLegacy from "expo-file-system/legacy";
 import { Paths, Directory, File } from "expo-file-system";
 import { api } from "./api";
 import type { VideoMeta } from "../types";
+
+const log = (message: string, data?: unknown) => {
+  const timestamp = new Date().toISOString().split("T")[1].slice(0, 12);
+  if (data) {
+    console.log(`[${timestamp}] [Downloader] ${message}`, data);
+  } else {
+    console.log(`[${timestamp}] [Downloader] ${message}`);
+  }
+};
 
 const getVideosDir = () => new Directory(Paths.document, "videos");
 
@@ -12,61 +22,125 @@ export async function ensureVideosDir(): Promise<Directory> {
   return videosDir;
 }
 
+export interface DownloadProgress {
+  progress: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+}
+
 export async function downloadVideo(
   serverUrl: string,
   videoId: string,
-  onProgress: (progress: number) => void
+  onProgress: (progress: DownloadProgress) => void,
+  signal?: AbortSignal
 ): Promise<{ videoPath: string; meta: VideoMeta }> {
   const videosDir = await ensureVideosDir();
   const videoFile = new File(videosDir, `${videoId}.mp4`);
   const videoUrl = api.getVideoFileUrl(serverUrl, videoId);
 
-  // Download video file using fetch with progress tracking
-  const response = await fetch(videoUrl);
-  if (!response.ok) {
-    throw new Error(`Download failed: ${response.status}`);
+  log(`Starting download: ${videoUrl}`);
+  log(`Destination: ${videoFile.uri}`);
+
+  // Signal that download is starting
+  onProgress({ progress: 0, bytesDownloaded: 0, totalBytes: 0 });
+
+  // Check if already aborted
+  if (signal?.aborted) {
+    throw new DOMException("Download cancelled", "AbortError");
   }
 
-  const contentLength = response.headers.get("content-length");
-  const total = contentLength ? parseInt(contentLength, 10) : 0;
-  let loaded = 0;
+  try {
+    // Use legacy FileSystem API for downloading with progress
+    const downloadResumable = FileSystemLegacy.createDownloadResumable(
+      videoUrl,
+      videoFile.uri,
+      {},
+      (downloadProgress) => {
+        const progress = Math.round(
+          (downloadProgress.totalBytesWritten /
+            downloadProgress.totalBytesExpectedToWrite) *
+            100
+        );
+        onProgress({
+          progress,
+          bytesDownloaded: downloadProgress.totalBytesWritten,
+          totalBytes: downloadProgress.totalBytesExpectedToWrite,
+        });
+      }
+    );
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error("Failed to get response reader");
-  }
-
-  const chunks: Uint8Array[] = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    chunks.push(value);
-    loaded += value.length;
-
-    if (total > 0) {
-      onProgress(Math.round((loaded / total) * 100));
+    // Set up abort handler
+    let abortHandler: (() => void) | undefined;
+    if (signal) {
+      abortHandler = () => {
+        log(`Download aborted: ${videoId}`);
+        downloadResumable.pauseAsync().catch(() => {
+          // Ignore pause errors during abort
+        });
+      };
+      signal.addEventListener("abort", abortHandler);
     }
+
+    try {
+      const result = await downloadResumable.downloadAsync();
+
+      // Check if aborted during download
+      if (signal?.aborted) {
+        await cleanupPartialDownload(videoId);
+        throw new DOMException("Download cancelled", "AbortError");
+      }
+
+      if (!result || result.status !== 200) {
+        throw new Error(
+          `Download failed: ${result?.status || "unknown error"}`
+        );
+      }
+
+      log(`Download complete: ${result.uri}`);
+      onProgress({ progress: 100, bytesDownloaded: result.headers?.["content-length"] ? parseInt(result.headers["content-length"]) : 0, totalBytes: result.headers?.["content-length"] ? parseInt(result.headers["content-length"]) : 0 });
+
+      // Fetch video metadata including transcript
+      const meta = await api.getVideoMeta(serverUrl, videoId);
+      log(`Metadata fetched for: ${videoId}`);
+
+      return {
+        videoPath: result.uri,
+        meta,
+      };
+    } finally {
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
+    }
+  } catch (error) {
+    // Clean up partial download on error (unless it's an abort)
+    if (!(error instanceof DOMException && error.name === "AbortError")) {
+      await cleanupPartialDownload(videoId).catch(() => {
+        // Ignore cleanup errors
+      });
+    }
+    log(`Download error:`, error);
+    throw error;
   }
+}
 
-  // Combine chunks and write to file
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    combined.set(chunk, offset);
-    offset += chunk.length;
+export async function cleanupPartialDownload(videoId: string): Promise<void> {
+  const videosDir = getVideosDir();
+  const videoFile = new File(videosDir, `${videoId}.mp4`);
+  const tempFile = new File(videosDir, `${videoId}.mp4.download`);
+
+  try {
+    if (videoFile.exists) {
+      videoFile.delete();
+      log(`Cleaned up partial download: ${videoFile.uri}`);
+    }
+    if (tempFile.exists) {
+      tempFile.delete();
+      log(`Cleaned up temp file: ${tempFile.uri}`);
+    }
+  } catch (error) {
+    log(`Cleanup error:`, error);
   }
-  await videoFile.write(combined);
-
-  // Fetch video metadata including transcript
-  const meta = await api.getVideoMeta(serverUrl, videoId);
-
-  return {
-    videoPath: videoFile.uri,
-    meta,
-  };
 }
 
 export async function deleteVideo(videoId: string): Promise<void> {

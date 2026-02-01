@@ -2,11 +2,18 @@ import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { Link } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLibraryStore } from "../stores/library";
+import { useDownloadStore } from "../stores/downloads";
 import { VideoCard } from "../components/VideoCard";
 
 export default function LibraryScreen() {
   const videos = useLibraryStore((state) => state.videos);
-  const downloadedVideos = videos.filter((v) => v.status === "downloaded");
+  const downloadQueue = useDownloadStore((state) => state.queue);
+
+  const downloadedVideos = videos.filter((v) => !!v.localPath);
+  const activeDownloads = downloadQueue.filter(
+    (d) => d.status === "downloading"
+  );
+  const queuedDownloads = downloadQueue.filter((d) => d.status === "queued");
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -26,14 +33,40 @@ export default function LibraryScreen() {
       ) : (
         <>
           <View style={styles.header}>
-            <Text style={styles.headerText}>
-              {downloadedVideos.length} video{downloadedVideos.length !== 1 ? "s" : ""} downloaded
-            </Text>
-            <Link href="/connect" asChild>
-              <Pressable style={styles.syncButton}>
-                <Text style={styles.syncButtonText}>Sync</Text>
-              </Pressable>
-            </Link>
+            <View style={styles.headerInfo}>
+              <Text style={styles.headerText}>
+                {downloadedVideos.length} video
+                {downloadedVideos.length !== 1 ? "s" : ""} downloaded
+              </Text>
+              {(activeDownloads.length > 0 || queuedDownloads.length > 0) && (
+                <View style={styles.downloadStatus}>
+                  {activeDownloads.length > 0 && (
+                    <Text style={styles.downloadStatusText}>
+                      {activeDownloads.length} downloading
+                      {activeDownloads[0] &&
+                        ` (${activeDownloads[0].progress}%)`}
+                    </Text>
+                  )}
+                  {queuedDownloads.length > 0 && (
+                    <Text style={styles.queuedStatusText}>
+                      {queuedDownloads.length} queued
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+            <View style={styles.headerButtons}>
+              <Link href="/share" asChild>
+                <Pressable style={styles.shareButton}>
+                  <Text style={styles.shareButtonText}>Share</Text>
+                </Pressable>
+              </Link>
+              <Link href="/connect" asChild>
+                <Pressable style={styles.syncButton}>
+                  <Text style={styles.syncButtonText}>Sync</Text>
+                </Pressable>
+              </Link>
+            </View>
           </View>
           <FlatList
             data={videos}
@@ -62,9 +95,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#1a1a2e",
   },
+  headerInfo: {
+    flex: 1,
+  },
   headerText: {
     color: "#a0a0a0",
     fontSize: 14,
+  },
+  downloadStatus: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  downloadStatusText: {
+    color: "#e94560",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  queuedStatusText: {
+    color: "#a0a0a0",
+    fontSize: 12,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  shareButton: {
+    backgroundColor: "#3b82f6",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  shareButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
   syncButton: {
     backgroundColor: "#e94560",

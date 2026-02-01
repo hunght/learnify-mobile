@@ -1,10 +1,17 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useDownloadProcessor } from "../hooks/useDownloadProcessor";
+
+function DownloadProcessor() {
+  useDownloadProcessor();
+  return null;
+}
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <DownloadProcessor />
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -38,6 +45,13 @@ export default function RootLayout() {
           options={{
             title: "Now Playing",
             headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="share"
+          options={{
+            title: "Share",
+            presentation: "modal",
           }}
         />
       </Stack>

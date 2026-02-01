@@ -18,8 +18,6 @@ export interface Video {
   localPath?: string;
   transcriptPath?: string;
   transcript?: Transcript;
-  downloadProgress?: number;
-  status: "pending" | "downloading" | "downloaded" | "failed";
 }
 
 export interface RemoteVideo {
@@ -44,4 +42,27 @@ export interface VideoMeta {
   channelTitle: string;
   duration: number;
   transcript?: Transcript;
+}
+
+// P2P Sharing Types
+export interface DiscoveredPeer {
+  name: string;
+  host: string;
+  port: number;
+  videoCount: number;
+}
+
+export interface PeerVideo {
+  id: string;
+  title: string;
+  channelTitle: string;
+  duration: number;
+  hasTranscript: boolean;
+}
+
+export interface TransferProgress {
+  videoId: string;
+  title: string;
+  progress: number;
+  status: "pending" | "downloading" | "completed" | "failed";
 }

@@ -19,10 +19,17 @@ export const useLibraryStore = create<LibraryStore>()(
 
       addVideo: (video) =>
         set((state) => {
-          // Don't add duplicates
-          if (state.videos.some((v) => v.id === video.id)) {
-            return state;
+          const existing = state.videos.find((v) => v.id === video.id);
+          if (existing) {
+            // Update existing video metadata
+            console.log("[Library] Video exists, updating:", video.id);
+            return {
+              videos: state.videos.map((v) =>
+                v.id === video.id ? { ...v, ...video } : v
+              ),
+            };
           }
+          console.log("[Library] Adding new video:", video.id);
           return { videos: [...state.videos, video] };
         }),
 
