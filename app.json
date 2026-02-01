@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "learnify",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.learnifytube.mobile",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "LearnifyTube needs local network access to sync videos from your desktop app.",
+        "NSLocalNetworkUsageDescription": "LearnifyTube needs local network access to sync videos from your desktop app and share videos with other devices.",
         "NSBonjourServices": ["_learnify._tcp"]
       }
     },
@@ -32,7 +32,8 @@
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.ACCESS_WIFI_STATE"
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE"
       ]
     },
     "web": {
