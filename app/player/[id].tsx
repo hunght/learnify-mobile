@@ -9,12 +9,16 @@ import {
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useLibraryStore } from "../../stores/library";
 import type { TranscriptSegment } from "../../types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = (SCREEN_WIDTH * 9) / 16;
+const SEGMENT_HEIGHT = 56; // Approximate height of each segment row
 
 export default function PlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,9 +28,11 @@ export default function PlayerScreen() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const transcriptListRef = useRef<FlatList>(null);
+  const insets = useSafeAreaInsets();
 
   const player = useVideoPlayer(video?.localPath || "", (player) => {
     player.loop = false;
+    player.timeUpdateEventInterval = 0.5; // Emit timeUpdate every 0.5 seconds
     player.play();
   });
 
@@ -58,29 +64,65 @@ export default function PlayerScreen() {
 
   const getCurrentSegmentIndex = () => {
     if (!video?.transcript?.segments) return -1;
-    return video.transcript.segments.findIndex(
+    const index = video.transcript.segments.findIndex(
       (seg, i, arr) =>
         currentTime >= seg.start &&
         (i === arr.length - 1 || currentTime < arr[i + 1].start)
     );
+    return index;
   };
 
   const currentSegmentIndex = getCurrentSegmentIndex();
 
+  // Debug: log time updates
+  useEffect(() => {
+    if (currentTime > 0) {
+      console.log(
+        `[Player] time=${currentTime.toFixed(1)}s, segment=${currentSegmentIndex}, playing=${isPlaying}`
+      );
+    }
+  }, [Math.floor(currentTime), currentSegmentIndex, isPlaying]);
+
   // Auto-scroll transcript
   useEffect(() => {
-    if (currentSegmentIndex > 0 && transcriptListRef.current) {
+    if (currentSegmentIndex >= 0 && transcriptListRef.current && isPlaying) {
       transcriptListRef.current.scrollToIndex({
         index: currentSegmentIndex,
         animated: true,
         viewPosition: 0.3,
       });
     }
-  }, [currentSegmentIndex]);
+  }, [currentSegmentIndex, isPlaying]);
+
+  const getItemLayout = (_: unknown, index: number) => ({
+    length: SEGMENT_HEIGHT,
+    offset: SEGMENT_HEIGHT * index,
+    index,
+  });
+
+  const handleScrollToIndexFailed = (info: {
+    index: number;
+    highestMeasuredFrameIndex: number;
+    averageItemLength: number;
+  }) => {
+    // Retry scrolling after a short delay
+    setTimeout(() => {
+      if (transcriptListRef.current && info.index >= 0) {
+        transcriptListRef.current.scrollToIndex({
+          index: info.index,
+          animated: true,
+          viewPosition: 0.3,
+        });
+      }
+    }, 100);
+  };
 
   if (!video) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Back</Text>
+        </Pressable>
         <Text style={styles.errorText}>Video not found</Text>
       </SafeAreaView>
     );
@@ -94,12 +136,7 @@ export default function PlayerScreen() {
         </Pressable>
       </SafeAreaView>
 
-      <VideoView
-        player={player}
-        style={styles.video}
-        allowsFullscreen
-        allowsPictureInPicture
-      />
+      <VideoView player={player} style={styles.video} />
 
       <View style={styles.infoContainer}>
         <Text style={styles.title} numberOfLines={2}>
@@ -115,7 +152,12 @@ export default function PlayerScreen() {
             ref={transcriptListRef}
             data={video.transcript.segments}
             keyExtractor={(_, index) => index.toString()}
-            onScrollToIndexFailed={() => {}}
+            getItemLayout={getItemLayout}
+            onScrollToIndexFailed={handleScrollToIndexFailed}
+            contentContainerStyle={{ paddingBottom: insets.bottom }}
+            initialNumToRender={20}
+            maxToRenderPerBatch={10}
+            windowSize={10}
             renderItem={({ item, index }) => (
               <Pressable
                 style={[
@@ -140,7 +182,7 @@ export default function PlayerScreen() {
           />
         </View>
       ) : (
-        <View style={styles.noTranscript}>
+        <View style={[styles.noTranscript, { paddingBottom: insets.bottom }]}>
           <Text style={styles.noTranscriptText}>
             No transcript available for this video
           </Text>
@@ -210,6 +252,7 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: "row",
     padding: 12,
+    minHeight: SEGMENT_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: "#1a1a2e",
   },

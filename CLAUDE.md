@@ -30,15 +30,20 @@ This is a React Native + Expo mobile app that syncs and plays downloaded YouTube
 
 ### Key Modules
 
-- **`services/api.ts`**: REST client for desktop server (`/api/info`, `/api/videos`, `/api/video/:id/*`)
+- **`services/api.ts`**: REST client for desktop server (`/api/info`, `/api/videos`, `/api/video/:id/*`, `/api/video/:id/transcripts`)
 - **`services/downloader.ts`**: Uses expo-file-system SDK 54+ `Paths`/`Directory`/`File` API for video downloads with progress tracking
 - **`services/downloadManager.ts`**: Singleton queue processor with concurrency (max 2), retry logic (exponential backoff), and cancellation support
 - **`services/p2p/`**: mDNS discovery via react-native-zeroconf for device-to-device sharing
-- **`stores/`**: Zustand stores with AsyncStorage persistence
-  - `library.ts`: Video collection state
+- **`db/`**: SQLite database with Drizzle ORM
+  - `schema.ts`: Database schema (videos, transcripts, translation_cache, saved_words, flashcards, watch_stats)
+  - `migrate.ts`: Migration runner that initializes tables on app start
+  - `repositories/videos.ts`: CRUD operations for videos and transcripts
+- **`stores/`**: Zustand stores (library backed by SQLite, others use AsyncStorage)
+  - `library.ts`: Video collection state (synced to SQLite)
   - `connection.ts`: Server connection state
   - `downloads.ts`: Download queue with status tracking (queued/downloading/completed/failed)
 - **`hooks/useDownloadProcessor.ts`**: Root-level hook that drives queue processing
+- **`hooks/useDatabase.ts`**: Initializes SQLite and runs migrations on app start
 
 ### Routing (Expo Router)
 
@@ -62,12 +67,27 @@ The download system uses a queue-based architecture:
 - AbortController for cancellation with partial file cleanup
 - Progress updates throttled to 250ms to avoid UI spam
 - Queue persists across app restarts (downloading items reset to queued on hydration)
+- Downloads fetch all available transcripts (multiple languages) from the desktop server
+
+### Database (SQLite + Drizzle)
+
+The app uses SQLite via expo-sqlite with Drizzle ORM for local data persistence:
+- **videos**: Core video metadata (id, title, channel, duration, localPath)
+- **transcripts**: Multiple languages per video with segments JSON
+- **translation_cache**: Word/phrase translations with learning stats
+- **translation_contexts**: Links translations to video timestamps
+- **saved_words**: User's vocabulary learning list
+- **flashcards**: Spaced repetition cards (SM-2 algorithm)
+- **watch_stats**: Playback progress tracking
+
+Migrations run automatically on app start via `useDatabase` hook.
 
 ## Tech Stack
 
 - Expo SDK 55 with New Architecture enabled
 - React 19 / React Native 0.83
 - expo-router for file-based routing (typed routes enabled)
+- expo-sqlite + drizzle-orm for local database
 - Zustand for state management
 - expo-video for playback
 - expo-file-system (SDK 54+ Paths API)

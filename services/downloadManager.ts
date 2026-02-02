@@ -76,7 +76,7 @@ class DownloadManager {
     log(`Starting download: ${item.title}`);
 
     try {
-      const { videoPath, meta } = await downloadVideo(
+      const { videoPath, meta, transcripts } = await downloadVideo(
         serverUrl,
         item.videoId,
         (progress) => {
@@ -92,7 +92,7 @@ class DownloadManager {
       // Update download store
       useDownloadStore.getState().markCompleted(item.videoId);
 
-      // Add/update video in library
+      // Add/update video in library with all transcripts
       libraryStore.addVideo({
         id: item.videoId,
         title: item.title,
@@ -100,10 +100,17 @@ class DownloadManager {
         duration: item.duration,
         thumbnailUrl: item.thumbnailUrl,
         localPath: videoPath,
+        // Use transcripts from dedicated endpoint, fallback to meta
+        transcripts:
+          transcripts.length > 0
+            ? transcripts
+            : meta.transcripts ?? (meta.transcript ? [meta.transcript] : []),
         transcript: meta.transcript,
       });
 
-      log(`Download complete: ${item.title}`);
+      log(
+        `Download complete: ${item.title} (${transcripts.length} transcripts)`
+      );
 
       // Process next in queue
       this.processQueue();
@@ -111,7 +118,11 @@ class DownloadManager {
       this.activeControllers.delete(item.videoId);
       this.lastProgressUpdate.delete(item.videoId);
 
-      if (error instanceof DOMException && error.name === "AbortError") {
+      // Check for abort error (DOMException doesn't exist in React Native)
+      const isAbortError =
+        error instanceof Error &&
+        (error.name === "AbortError" || error.message.includes("aborted"));
+      if (isAbortError) {
         log(`Download cancelled: ${item.title}`);
         // Already removed from queue by cancel()
         return;

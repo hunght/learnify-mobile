@@ -1,4 +1,12 @@
-import { View, Text, StyleSheet, Pressable, Image } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Image,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { Link } from "expo-router";
 import type { Video } from "../types";
 import { useDownloadStore } from "../stores/downloads";
@@ -6,9 +14,10 @@ import { downloadManager } from "../services/downloadManager";
 
 interface VideoCardProps {
   video: Video;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function VideoCard({ video }: VideoCardProps) {
+export function VideoCard({ video, style }: VideoCardProps) {
   const download = useDownloadStore((state) =>
     state.queue.find((d) => d.videoId === video.id)
   );
@@ -28,7 +37,11 @@ export function VideoCard({ video }: VideoCardProps) {
 
   const content = (
     <Pressable
-      style={[styles.container, !isDownloaded && styles.containerDisabled]}
+      style={StyleSheet.flatten([
+        styles.container,
+        !isDownloaded && styles.containerDisabled,
+        style,
+      ])}
       disabled={!isDownloaded}
     >
       <View style={styles.thumbnailContainer}>

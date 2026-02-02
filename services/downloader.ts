@@ -1,7 +1,15 @@
 import * as FileSystemLegacy from "expo-file-system/legacy";
 import { Paths, Directory, File } from "expo-file-system";
 import { api } from "./api";
-import type { VideoMeta } from "../types";
+import type { VideoMeta, Transcript } from "../types";
+
+// Custom AbortError for React Native (DOMException doesn't exist)
+class AbortError extends Error {
+  name = "AbortError";
+  constructor(message = "Download cancelled") {
+    super(message);
+  }
+}
 
 const log = (message: string, data?: unknown) => {
   const timestamp = new Date().toISOString().split("T")[1].slice(0, 12);
@@ -33,7 +41,7 @@ export async function downloadVideo(
   videoId: string,
   onProgress: (progress: DownloadProgress) => void,
   signal?: AbortSignal
-): Promise<{ videoPath: string; meta: VideoMeta }> {
+): Promise<{ videoPath: string; meta: VideoMeta; transcripts: Transcript[] }> {
   const videosDir = await ensureVideosDir();
   const videoFile = new File(videosDir, `${videoId}.mp4`);
   const videoUrl = api.getVideoFileUrl(serverUrl, videoId);
@@ -46,7 +54,7 @@ export async function downloadVideo(
 
   // Check if already aborted
   if (signal?.aborted) {
-    throw new DOMException("Download cancelled", "AbortError");
+    throw new AbortError();
   }
 
   try {
@@ -87,7 +95,7 @@ export async function downloadVideo(
       // Check if aborted during download
       if (signal?.aborted) {
         await cleanupPartialDownload(videoId);
-        throw new DOMException("Download cancelled", "AbortError");
+        throw new AbortError();
       }
 
       if (!result || result.status !== 200) {
@@ -97,15 +105,38 @@ export async function downloadVideo(
       }
 
       log(`Download complete: ${result.uri}`);
-      onProgress({ progress: 100, bytesDownloaded: result.headers?.["content-length"] ? parseInt(result.headers["content-length"]) : 0, totalBytes: result.headers?.["content-length"] ? parseInt(result.headers["content-length"]) : 0 });
+      onProgress({
+        progress: 100,
+        bytesDownloaded: result.headers?.["content-length"]
+          ? parseInt(result.headers["content-length"])
+          : 0,
+        totalBytes: result.headers?.["content-length"]
+          ? parseInt(result.headers["content-length"])
+          : 0,
+      });
 
-      // Fetch video metadata including transcript
-      const meta = await api.getVideoMeta(serverUrl, videoId);
-      log(`Metadata fetched for: ${videoId}`);
+      // Fetch video metadata and all transcripts in parallel
+      const [meta, transcripts] = await Promise.all([
+        api.getVideoMeta(serverUrl, videoId),
+        api.getVideoTranscripts(serverUrl, videoId),
+      ]);
+      log(
+        `Metadata fetched for: ${videoId}, transcripts: ${transcripts.length} languages`
+      );
+      // Debug: log transcript details
+      for (const t of transcripts) {
+        log(`  Transcript: lang=${t.language}, segments=${t.segments?.length ?? 0}`);
+      }
+      if (meta.transcript) {
+        log(
+          `  Meta transcript: lang=${meta.transcript.language}, segments=${meta.transcript.segments?.length ?? 0}`
+        );
+      }
 
       return {
         videoPath: result.uri,
         meta,
+        transcripts,
       };
     } finally {
       if (signal && abortHandler) {
@@ -114,7 +145,10 @@ export async function downloadVideo(
     }
   } catch (error) {
     // Clean up partial download on error (unless it's an abort)
-    if (!(error instanceof DOMException && error.name === "AbortError")) {
+    const isAbortError =
+      error instanceof Error &&
+      (error.name === "AbortError" || error.message.includes("aborted"));
+    if (!isAbortError) {
       await cleanupPartialDownload(videoId).catch(() => {
         // Ignore cleanup errors
       });
