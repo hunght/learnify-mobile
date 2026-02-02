@@ -25,22 +25,27 @@ This is a React Native + Expo mobile app that syncs and plays downloaded YouTube
 ### Core Data Flow
 
 1. **Connection**: User enters desktop server IP → `useConnectionStore` persists connection
-2. **Sync**: App fetches video list via `api.ts` → downloads via `downloader.ts` → stores metadata in `useLibraryStore`
+2. **Sync**: App fetches video list via `api.ts` → queued in `useDownloadStore` → processed by `downloadManager.ts` → stored in `useLibraryStore`
 3. **Playback**: Videos play from local storage with synchronized transcript auto-scrolling
 
 ### Key Modules
 
 - **`services/api.ts`**: REST client for desktop server (`/api/info`, `/api/videos`, `/api/video/:id/*`)
 - **`services/downloader.ts`**: Uses expo-file-system SDK 54+ `Paths`/`Directory`/`File` API for video downloads with progress tracking
+- **`services/downloadManager.ts`**: Singleton queue processor with concurrency (max 2), retry logic (exponential backoff), and cancellation support
+- **`services/p2p/`**: mDNS discovery via react-native-zeroconf for device-to-device sharing
 - **`stores/`**: Zustand stores with AsyncStorage persistence
   - `library.ts`: Video collection state
   - `connection.ts`: Server connection state
+  - `downloads.ts`: Download queue with status tracking (queued/downloading/completed/failed)
+- **`hooks/useDownloadProcessor.ts`**: Root-level hook that drives queue processing
 
 ### Routing (Expo Router)
 
 - `app/index.tsx` - Library screen (home)
 - `app/connect.tsx` - Desktop connection modal
 - `app/player/[id].tsx` - Video player with interactive transcript
+- `app/share.tsx` - P2P device sharing modal
 
 ### Video Player
 
@@ -49,11 +54,21 @@ Uses `expo-video` with:
 - Real-time `timeUpdate` events for transcript synchronization
 - Tap-to-seek on transcript segments
 
+### Download System
+
+The download system uses a queue-based architecture:
+- Downloads are queued in `useDownloadStore`, processed by `downloadManager`
+- Max 2 concurrent downloads, 3 retries with exponential backoff (1s, 3s, 10s)
+- AbortController for cancellation with partial file cleanup
+- Progress updates throttled to 250ms to avoid UI spam
+- Queue persists across app restarts (downloading items reset to queued on hydration)
+
 ## Tech Stack
 
-- Expo SDK 54 with New Architecture enabled
-- React 19 / React Native 0.81
+- Expo SDK 55 with New Architecture enabled
+- React 19 / React Native 0.83
 - expo-router for file-based routing (typed routes enabled)
 - Zustand for state management
 - expo-video for playback
-- expo-file-system (SDK 54 Paths API)
+- expo-file-system (SDK 54+ Paths API)
+- react-native-zeroconf for mDNS discovery
