@@ -75,47 +75,58 @@ export default function RootLayout() {
         <DownloadProcessor />
         <StatusBar style="light" />
         <Stack
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: "#1a1a2e",
-          },
-          headerTintColor: "#fff",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-          contentStyle: {
-            backgroundColor: "#16213e",
-          },
-        }}
-      >
-        <Stack.Screen
-          name="index"
-          options={{
-            title: "LearnifyTube",
-          }}
-        />
-        <Stack.Screen
-          name="connect"
-          options={{
-            title: "Connect to Desktop",
-            presentation: "modal",
-          }}
-        />
-        <Stack.Screen
-          name="player/[id]"
-          options={{
-            title: "Now Playing",
+          screenOptions={{
             headerShown: false,
+            contentStyle: {
+              backgroundColor: "#16213e",
+            },
           }}
-        />
-        <Stack.Screen
-          name="share"
-          options={{
-            title: "Share",
-            presentation: "modal",
-          }}
-        />
-      </Stack>
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="player/[id]"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+            }}
+          />
+          <Stack.Screen
+            name="share"
+            options={{
+              title: "Share",
+              headerShown: true,
+              presentation: "modal",
+              headerStyle: {
+                backgroundColor: "#1a1a2e",
+              },
+              headerTintColor: "#fff",
+            }}
+          />
+          <Stack.Screen
+            name="connect"
+            options={{
+              title: "Sync Videos",
+              headerShown: true,
+              presentation: "modal",
+              headerStyle: {
+                backgroundColor: "#1a1a2e",
+              },
+              headerTintColor: "#fff",
+            }}
+          />
+          <Stack.Screen
+            name="sync"
+            options={{
+              title: "Browse Server",
+              headerShown: true,
+              presentation: "modal",
+              headerStyle: {
+                backgroundColor: "#1a1a2e",
+              },
+              headerTintColor: "#fff",
+            }}
+          />
+        </Stack>
       </DatabaseInitializer>
     </SafeAreaProvider>
   );

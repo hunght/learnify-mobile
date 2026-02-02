@@ -1,4 +1,16 @@
-import type { ServerInfo, RemoteVideo, VideoMeta, Transcript } from "../types";
+import type {
+  ServerInfo,
+  RemoteVideo,
+  VideoMeta,
+  Transcript,
+  RemoteChannel,
+  RemotePlaylist,
+  RemoteFavorite,
+  RemoteVideoWithStatus,
+  ServerDownloadStatus,
+  RemoteSubscription,
+  RemoteMyList,
+} from "../types";
 
 const TIMEOUT = 10000;
 
@@ -69,6 +81,10 @@ export const api = {
     return `${serverUrl}/api/video/${videoId}/thumbnail`;
   },
 
+  getPlaylistThumbnailUrl(serverUrl: string, playlistId: string): string {
+    return `${serverUrl}/api/playlist/${encodeURIComponent(playlistId)}/thumbnail`;
+  },
+
   // Fetch all transcripts for a video (multiple languages)
   async getVideoTranscripts(
     serverUrl: string,
@@ -95,6 +111,208 @@ export const api = {
       );
       const meta = await this.getVideoMeta(serverUrl, videoId);
       return meta.transcripts ?? (meta.transcript ? [meta.transcript] : []);
+    }
+  },
+
+  // === Sync API Methods ===
+
+  async getChannels(
+    serverUrl: string
+  ): Promise<{ channels: RemoteChannel[] }> {
+    const response = await fetchWithTimeout(`${serverUrl}/api/channels`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getChannelVideos(
+    serverUrl: string,
+    channelId: string
+  ): Promise<{ videos: RemoteVideoWithStatus[] }> {
+    const response = await fetchWithTimeout(
+      `${serverUrl}/api/channel/${encodeURIComponent(channelId)}/videos`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getPlaylists(
+    serverUrl: string
+  ): Promise<{ playlists: RemotePlaylist[] }> {
+    const response = await fetchWithTimeout(`${serverUrl}/api/playlists`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getPlaylistVideos(
+    serverUrl: string,
+    playlistId: string
+  ): Promise<{ videos: RemoteVideoWithStatus[] }> {
+    const response = await fetchWithTimeout(
+      `${serverUrl}/api/playlist/${encodeURIComponent(playlistId)}/videos`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getFavorites(
+    serverUrl: string
+  ): Promise<{ favorites: RemoteFavorite[] }> {
+    const response = await fetchWithTimeout(`${serverUrl}/api/favorites`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async addFavorite(
+    serverUrl: string,
+    entityType: "video" | "custom_playlist" | "channel_playlist",
+    entityId: string
+  ): Promise<{ success: boolean; id: string }> {
+    const response = await fetchWithTimeout(`${serverUrl}/api/favorites`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityType, entityId }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async removeFavorite(
+    serverUrl: string,
+    entityType: "video" | "custom_playlist" | "channel_playlist",
+    entityId: string
+  ): Promise<{ success: boolean }> {
+    const response = await fetchWithTimeout(
+      `${serverUrl}/api/favorites/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async requestServerDownload(
+    serverUrl: string,
+    params: { videoId?: string; url?: string }
+  ): Promise<{ success: boolean; videoId: string | null; status: string | null; message: string }> {
+    const response = await fetchWithTimeout(
+      `${serverUrl}/api/download/request`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async getServerDownloadStatus(
+    serverUrl: string,
+    videoId: string
+  ): Promise<ServerDownloadStatus> {
+    const response = await fetchWithTimeout(
+      `${serverUrl}/api/download/status/${encodeURIComponent(videoId)}`
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  },
+
+  // === Subscriptions API Methods ===
+
+  async getSubscriptions(
+    serverUrl: string
+  ): Promise<{ subscriptions: RemoteSubscription[] }> {
+    try {
+      const response = await fetchWithTimeout(`${serverUrl}/api/subscriptions`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Endpoint not implemented yet
+          return { subscriptions: [] };
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      // Graceful fallback for not-yet-implemented endpoint
+      console.log("[API] Subscriptions endpoint not available");
+      return { subscriptions: [] };
+    }
+  },
+
+  async getSubscriptionVideos(
+    serverUrl: string,
+    channelId: string
+  ): Promise<{ videos: RemoteVideoWithStatus[] }> {
+    try {
+      const response = await fetchWithTimeout(
+        `${serverUrl}/api/subscription/${encodeURIComponent(channelId)}/videos`
+      );
+      if (!response.ok) {
+        if (response.status === 404) {
+          return { videos: [] };
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.log("[API] Subscription videos endpoint not available");
+      return { videos: [] };
+    }
+  },
+
+  // === My Lists API Methods ===
+
+  async getMyLists(serverUrl: string): Promise<{ mylists: RemoteMyList[] }> {
+    try {
+      const response = await fetchWithTimeout(`${serverUrl}/api/mylists`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          return { mylists: [] };
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.log("[API] My lists endpoint not available");
+      return { mylists: [] };
+    }
+  },
+
+  async getMyListVideos(
+    serverUrl: string,
+    listId: string
+  ): Promise<{ videos: RemoteVideoWithStatus[] }> {
+    try {
+      const response = await fetchWithTimeout(
+        `${serverUrl}/api/mylist/${encodeURIComponent(listId)}/videos`
+      );
+      if (!response.ok) {
+        if (response.status === 404) {
+          return { videos: [] };
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      console.log("[API] My list videos endpoint not available");
+      return { videos: [] };
     }
   },
 };

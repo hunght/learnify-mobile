@@ -99,3 +99,67 @@ export interface TransferProgress {
   progress: number;
   status: "pending" | "downloading" | "completed" | "failed";
 }
+
+// Sync API Types
+export interface RemoteChannel {
+  channelId: string;
+  channelTitle: string;
+  thumbnailUrl: string | null;
+  videoCount: number;
+  lastUpdatedAt?: string | null;
+}
+
+export interface RemotePlaylist {
+  playlistId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  itemCount: number | null;
+  channelId: string | null;
+  type: "channel" | "custom";
+  downloadedCount: number;
+}
+
+export interface RemoteVideoWithStatus {
+  id: string;
+  title: string;
+  channelTitle: string;
+  duration: number;
+  thumbnailUrl: string | null;
+  downloadStatus: "completed" | "downloading" | "queued" | "pending" | null;
+  downloadProgress: number | null;
+  fileSize: number | null;
+}
+
+export interface RemoteFavorite {
+  id: string;
+  entityType: "video" | "custom_playlist" | "channel_playlist";
+  entityId: string;
+  video?: RemoteVideoWithStatus;
+  playlist?: RemotePlaylist;
+}
+
+export interface ServerDownloadStatus {
+  videoId: string;
+  status: "queued" | "downloading" | "completed" | "failed" | "pending" | null;
+  progress: number | null;
+  error: string | null;
+}
+
+// Subscriptions (YouTube subscribed channels)
+export interface RemoteSubscription {
+  channelId: string;
+  channelTitle: string;
+  thumbnailUrl: string | null;
+  videoCount: number;
+}
+
+// My Lists (user-created collections)
+export interface RemoteMyList {
+  id: string;
+  name: string;
+  itemCount: number;
+  thumbnailUrl: string | null;
+}
+
+// Browse tabs for the home screen
+export type BrowseTab = "mylists" | "channels" | "playlists" | "subscriptions";

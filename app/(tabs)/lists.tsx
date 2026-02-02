@@ -1,11 +1,11 @@
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { Link } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLibraryStore } from "../stores/library";
-import { useDownloadStore } from "../stores/downloads";
-import { VideoCard } from "../components/VideoCard";
+import { useLibraryStore } from "../../stores/library";
+import { useDownloadStore } from "../../stores/downloads";
+import { VideoCard } from "../../components/VideoCard";
 
-export default function LibraryScreen() {
+export default function ListsScreen() {
   const videos = useLibraryStore((state) => state.videos);
   const downloadQueue = useDownloadStore((state) => state.queue);
 
@@ -19,14 +19,14 @@ export default function LibraryScreen() {
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       {videos.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📱</Text>
+          <Text style={styles.emptyIcon}>📚</Text>
           <Text style={styles.emptyTitle}>No Videos Yet</Text>
           <Text style={styles.emptyText}>
-            Connect to your LearnifyTube desktop app to sync videos
+            Sync videos from your LearnifyTube desktop app
           </Text>
           <Link href="/connect" asChild>
-            <Pressable style={styles.connectButton}>
-              <Text style={styles.connectButtonText}>Connect to Desktop</Text>
+            <Pressable style={styles.syncButton}>
+              <Text style={styles.syncButtonText}>Sync Videos</Text>
             </Pressable>
           </Link>
         </View>
@@ -54,18 +54,6 @@ export default function LibraryScreen() {
                   )}
                 </View>
               )}
-            </View>
-            <View style={styles.headerButtons}>
-              <Link href="/share" asChild>
-                <Pressable style={styles.shareButton}>
-                  <Text style={styles.shareButtonText}>Share</Text>
-                </Pressable>
-              </Link>
-              <Link href="/connect" asChild>
-                <Pressable style={styles.syncButton}>
-                  <Text style={styles.syncButtonText}>Sync</Text>
-                </Pressable>
-              </Link>
             </View>
           </View>
           <FlatList
@@ -116,30 +104,6 @@ const styles = StyleSheet.create({
     color: "#a0a0a0",
     fontSize: 12,
   },
-  headerButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  shareButton: {
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  shareButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  syncButton: {
-    backgroundColor: "#e94560",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  syncButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
   list: {
     padding: 8,
   },
@@ -165,13 +129,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
   },
-  connectButton: {
+  syncButton: {
     backgroundColor: "#e94560",
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
   },
-  connectButtonText: {
+  syncButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
