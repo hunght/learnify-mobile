@@ -13,6 +13,7 @@ import { useConnectionStore } from "../stores/connection";
 import { useLibraryStore } from "../stores/library";
 import { useDownloadStore } from "../stores/downloads";
 import { usePlaybackStore } from "../stores/playback";
+import { savePlaylist } from "../db/repositories/playlists";
 import {
   SyncTabBar,
   ChannelList,
@@ -341,9 +342,80 @@ export default function SyncScreen() {
   const currentTitle = getCurrentTitle();
 
   if (isShowingVideos) {
-    const syncableCount = currentVideos.filter(
-      (v) => v.downloadStatus === "completed" && !syncedVideoIds.has(v.id)
+    // Videos available on server (downloaded on desktop)
+    const availableVideos = currentVideos.filter(
+      (v) => v.downloadStatus === "completed"
+    );
+    // Videos not yet synced to mobile
+    const syncableCount = availableVideos.filter(
+      (v) => !syncedVideoIds.has(v.id)
     ).length;
+    // Videos already saved locally
+    const savedCount = availableVideos.filter((v) =>
+      syncedVideoIds.has(v.id)
+    ).length;
+    const totalAvailable = availableVideos.length;
+    const isFullySaved = savedCount === totalAvailable && totalAvailable > 0;
+
+    const handleSavePlaylistOffline = () => {
+      // Determine playlist info based on what's selected
+      let playlistId = "";
+      let playlistTitle = "";
+      let playlistType = "";
+      let sourceId: string | null = null;
+      let thumbnailUrl: string | null = null;
+
+      if (selectedChannel) {
+        playlistId = `channel_${selectedChannel.channelId}`;
+        playlistTitle = selectedChannel.channelTitle;
+        playlistType = "channel";
+        sourceId = selectedChannel.channelId;
+        thumbnailUrl = selectedChannel.thumbnailUrl;
+      } else if (selectedPlaylist) {
+        playlistId = `playlist_${selectedPlaylist.playlistId}`;
+        playlistTitle = selectedPlaylist.title;
+        playlistType = "playlist";
+        sourceId = selectedPlaylist.channelId;
+        thumbnailUrl = selectedPlaylist.thumbnailUrl;
+      } else if (selectedSubscription) {
+        playlistId = `subscription_${selectedSubscription.channelId}`;
+        playlistTitle = selectedSubscription.channelTitle;
+        playlistType = "subscription";
+        sourceId = selectedSubscription.channelId;
+        thumbnailUrl = selectedSubscription.thumbnailUrl;
+      } else if (selectedMyList) {
+        playlistId = `mylist_${selectedMyList.id}`;
+        playlistTitle = selectedMyList.name;
+        playlistType = "mylist";
+        sourceId = selectedMyList.id;
+        thumbnailUrl = selectedMyList.thumbnailUrl;
+      }
+
+      // Save playlist metadata with all videos (not just available ones)
+      if (playlistId) {
+        const videoInfos = currentVideos.map((v) => ({
+          videoId: v.id,
+          title: v.title,
+          channelTitle: v.channelTitle,
+          duration: v.duration,
+          thumbnailUrl: v.thumbnailUrl ?? undefined,
+        }));
+
+        savePlaylist(playlistId, playlistTitle, playlistType, sourceId, thumbnailUrl, videoInfos);
+      }
+
+      // Queue downloads for videos not yet synced
+      for (const video of availableVideos) {
+        if (!syncedVideoIds.has(video.id)) {
+          queueDownload(video.id, {
+            title: video.title,
+            channelTitle: video.channelTitle,
+            duration: video.duration,
+            thumbnailUrl: video.thumbnailUrl ?? undefined,
+          });
+        }
+      }
+    };
 
     return (
       <View style={styles.container}>
@@ -357,10 +429,41 @@ export default function SyncScreen() {
               {currentTitle}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {currentVideos.length} video{currentVideos.length !== 1 ? "s" : ""}
+              {totalAvailable > 0
+                ? `${savedCount}/${totalAvailable} saved offline`
+                : `${currentVideos.length} videos`}
             </Text>
           </View>
+          {/* Save Offline Button */}
+          {currentVideos.length > 0 && (
+            <Pressable
+              style={[
+                styles.saveOfflineButton,
+                isFullySaved && styles.saveOfflineButtonDisabled,
+              ]}
+              onPress={handleSavePlaylistOffline}
+              disabled={isFullySaved}
+            >
+              <Text style={styles.saveOfflineButtonText}>
+                {isFullySaved ? "✓ Saved" : "Save All"}
+              </Text>
+            </Pressable>
+          )}
         </View>
+
+        {/* Progress bar */}
+        {totalAvailable > 0 && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${(savedCount / totalAvailable) * 100}%` },
+                ]}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Selection toolbar */}
         {syncableCount > 0 && (
@@ -599,5 +702,35 @@ const styles = StyleSheet.create({
   },
   videoList: {
     paddingVertical: 8,
+  },
+  saveOfflineButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#22c55e",
+  },
+  saveOfflineButtonDisabled: {
+    backgroundColor: "#27272a",
+  },
+  saveOfflineButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  progressContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "#09090b",
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: "#27272a",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#22c55e",
+    borderRadius: 2,
   },
 });

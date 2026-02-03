@@ -133,6 +133,45 @@ export const flashcards = sqliteTable(
   ]
 );
 
+// Saved playlists - for offline access
+export const savedPlaylists = sqliteTable(
+  "saved_playlists",
+  {
+    id: text("id").primaryKey(), // Playlist ID from server
+    title: text("title").notNull(),
+    thumbnailUrl: text("thumbnail_url"),
+    type: text("type").notNull(), // "channel" | "playlist" | "subscription" | "mylist"
+    sourceId: text("source_id"), // Channel ID or source identifier
+    itemCount: integer("item_count").default(0),
+    savedAt: integer("saved_at").notNull(),
+    updatedAt: integer("updated_at"),
+  },
+  (table) => [index("saved_playlists_type_idx").on(table.type)]
+);
+
+// Saved playlist items - videos in each saved playlist
+export const savedPlaylistItems = sqliteTable(
+  "saved_playlist_items",
+  {
+    id: text("id").primaryKey(),
+    playlistId: text("playlist_id")
+      .notNull()
+      .references(() => savedPlaylists.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    title: text("title").notNull(),
+    channelTitle: text("channel_title").notNull(),
+    duration: integer("duration").notNull(),
+    thumbnailUrl: text("thumbnail_url"),
+    position: integer("position").notNull(), // Order in playlist
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("saved_playlist_items_playlist_id_idx").on(table.playlistId),
+    index("saved_playlist_items_video_id_idx").on(table.videoId),
+    unique().on(table.playlistId, table.videoId),
+  ]
+);
+
 // Watch stats per video
 export const watchStats = sqliteTable(
   "watch_stats",
@@ -175,3 +214,9 @@ export type NewFlashcard = typeof flashcards.$inferInsert;
 
 export type WatchStat = typeof watchStats.$inferSelect;
 export type NewWatchStat = typeof watchStats.$inferInsert;
+
+export type SavedPlaylist = typeof savedPlaylists.$inferSelect;
+export type NewSavedPlaylist = typeof savedPlaylists.$inferInsert;
+
+export type SavedPlaylistItem = typeof savedPlaylistItems.$inferSelect;
+export type NewSavedPlaylistItem = typeof savedPlaylistItems.$inferInsert;

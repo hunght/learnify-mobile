@@ -121,6 +121,39 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS watch_stats_video_id_idx ON watch_stats (video_id);`,
   `CREATE INDEX IF NOT EXISTS watch_stats_last_watched_idx ON watch_stats (last_watched_at);`,
 
+  // Saved playlists table
+  `
+  CREATE TABLE IF NOT EXISTS saved_playlists (
+    id TEXT PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    thumbnail_url TEXT,
+    type TEXT NOT NULL,
+    source_id TEXT,
+    item_count INTEGER DEFAULT 0,
+    saved_at INTEGER NOT NULL,
+    updated_at INTEGER
+  );
+  `,
+  `CREATE INDEX IF NOT EXISTS saved_playlists_type_idx ON saved_playlists (type);`,
+
+  // Saved playlist items table
+  `
+  CREATE TABLE IF NOT EXISTS saved_playlist_items (
+    id TEXT PRIMARY KEY NOT NULL,
+    playlist_id TEXT NOT NULL REFERENCES saved_playlists(id) ON DELETE CASCADE,
+    video_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    channel_title TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    thumbnail_url TEXT,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
+  `CREATE INDEX IF NOT EXISTS saved_playlist_items_playlist_id_idx ON saved_playlist_items (playlist_id);`,
+  `CREATE INDEX IF NOT EXISTS saved_playlist_items_video_id_idx ON saved_playlist_items (video_id);`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS saved_playlist_items_unique_idx ON saved_playlist_items (playlist_id, video_id);`,
+
   // Schema version tracking
   `
   CREATE TABLE IF NOT EXISTS schema_version (
