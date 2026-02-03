@@ -51,32 +51,6 @@ export interface VideoMeta {
   transcripts?: Transcript[];
 }
 
-// Translation types for vocabulary learning
-export interface Translation {
-  id: string;
-  sourceText: string;
-  sourceLang: string;
-  targetLang: string;
-  translatedText: string;
-  detectedLang?: string;
-  queryCount: number;
-  contexts?: TranslationContext[];
-}
-
-export interface TranslationContext {
-  videoId: string;
-  timestampSeconds: number;
-  contextText?: string;
-}
-
-export interface SavedWord {
-  id: string;
-  translation: Translation;
-  notes?: string;
-  reviewCount: number;
-  lastReviewedAt?: number;
-}
-
 // P2P Sharing Types
 export interface DiscoveredPeer {
   name: string;

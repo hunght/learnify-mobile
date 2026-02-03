@@ -14,7 +14,9 @@
     "build:android:preview": "eas build --platform android --profile preview",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "lint": "eslint . --ext .ts,.tsx",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "knip": "knip",
+    "knip:fix": "knip --fix"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -42,7 +44,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "drizzle-kit": "^0.31.8",
+    "knip": "^5.83.0",
     "typescript": "~5.9.2"
   },
   "private": true
