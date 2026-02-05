@@ -8,7 +8,6 @@ import type {
   RemoteFavorite,
   RemoteVideoWithStatus,
   ServerDownloadStatus,
-  RemoteSubscription,
   RemoteMyList,
 } from "../types";
 
@@ -238,21 +237,22 @@ export const api = {
 
   async getSubscriptions(
     serverUrl: string
-  ): Promise<{ subscriptions: RemoteSubscription[] }> {
+  ): Promise<{ videos: RemoteVideoWithStatus[] }> {
     try {
       const response = await fetchWithTimeout(`${serverUrl}/api/subscriptions`);
       if (!response.ok) {
         if (response.status === 404) {
           // Endpoint not implemented yet
-          return { subscriptions: [] };
+          return { videos: [] };
         }
         throw new Error(`HTTP ${response.status}`);
       }
-      return response.json();
+      const data = (await response.json()) as { videos?: RemoteVideoWithStatus[] };
+      return { videos: Array.isArray(data.videos) ? data.videos : [] };
     } catch (error) {
       // Graceful fallback for not-yet-implemented endpoint
       console.log("[API] Subscriptions endpoint not available");
-      return { subscriptions: [] };
+      return { videos: [] };
     }
   },
 

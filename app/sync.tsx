@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSyncStore } from "../stores/sync";
@@ -19,17 +20,18 @@ import {
   ChannelList,
   PlaylistList,
   VideoListItem,
-  SubscriptionList,
   MyListsList,
+  SubscriptionVideoGridItem,
 } from "../components/sync";
 import type {
   RemoteChannel,
   RemotePlaylist,
   RemoteVideoWithStatus,
-  RemoteSubscription,
   RemoteMyList,
 } from "../types";
 import type { StreamingVideo } from "../stores/playback";
+import { api } from "../services/api";
+import { getVideoLocalPath, videoExistsLocally } from "../services/downloader";
 
 export default function SyncScreen() {
   const router = useRouter();
@@ -43,7 +45,6 @@ export default function SyncScreen() {
     setActiveTab,
     channels,
     playlists,
-    subscriptions,
     myLists,
     isLoadingChannels,
     isLoadingPlaylists,
@@ -59,7 +60,6 @@ export default function SyncScreen() {
     channelVideos,
     selectedPlaylist,
     playlistVideos,
-    selectedSubscription,
     subscriptionVideos,
     selectedMyList,
     myListVideos,
@@ -70,11 +70,9 @@ export default function SyncScreen() {
     fetchMyLists,
     fetchChannelVideos,
     fetchPlaylistVideos,
-    fetchSubscriptionVideos,
     fetchMyListVideos,
     selectChannel,
     selectPlaylist,
-    selectSubscription,
     selectMyList,
     toggleVideoSelection,
     selectAllVideos,
@@ -84,6 +82,20 @@ export default function SyncScreen() {
   // Set of video IDs already synced to mobile
   const syncedVideoIds = new Set(libraryVideos.map((v) => v.id));
 
+  const [pendingVideoIds, setPendingVideoIds] = useState<Set<string>>(new Set());
+
+  const setPending = useCallback((videoId: string, isPending: boolean) => {
+    setPendingVideoIds((prev) => {
+      const next = new Set(prev);
+      if (isPending) {
+        next.add(videoId);
+      } else {
+        next.delete(videoId);
+      }
+      return next;
+    });
+  }, []);
+
   // Fetch data when tab changes or on mount
   useEffect(() => {
     if (!serverUrl) return;
@@ -92,7 +104,7 @@ export default function SyncScreen() {
       fetchChannels(serverUrl);
     } else if (activeTab === "playlists" && playlists.length === 0) {
       fetchPlaylists(serverUrl);
-    } else if (activeTab === "subscriptions" && subscriptions.length === 0) {
+    } else if (activeTab === "subscriptions" && subscriptionVideos.length === 0) {
       fetchSubscriptions(serverUrl);
     } else if (activeTab === "mylists" && myLists.length === 0) {
       fetchMyLists(serverUrl);
@@ -102,13 +114,19 @@ export default function SyncScreen() {
     serverUrl,
     channels.length,
     playlists.length,
-    subscriptions.length,
+    subscriptionVideos.length,
     myLists.length,
     fetchChannels,
     fetchPlaylists,
     fetchSubscriptions,
     fetchMyLists,
   ]);
+
+  useEffect(() => {
+    if (!serverUrl) {
+      setPendingVideoIds(new Set());
+    }
+  }, [serverUrl]);
 
   const handleRefreshChannels = useCallback(() => {
     if (serverUrl) fetchChannels(serverUrl);
@@ -140,13 +158,6 @@ export default function SyncScreen() {
     [serverUrl, fetchPlaylistVideos]
   );
 
-  const handleSubscriptionPress = useCallback(
-    (subscription: RemoteSubscription) => {
-      if (serverUrl) fetchSubscriptionVideos(serverUrl, subscription);
-    },
-    [serverUrl, fetchSubscriptionVideos]
-  );
-
   const handleMyListPress = useCallback(
     (myList: RemoteMyList) => {
       if (serverUrl) fetchMyListVideos(serverUrl, myList);
@@ -159,21 +170,132 @@ export default function SyncScreen() {
       selectChannel(null);
     } else if (selectedPlaylist) {
       selectPlaylist(null);
-    } else if (selectedSubscription) {
-      selectSubscription(null);
     } else if (selectedMyList) {
       selectMyList(null);
     }
   }, [
     selectedChannel,
     selectedPlaylist,
-    selectedSubscription,
     selectedMyList,
     selectChannel,
     selectPlaylist,
-    selectSubscription,
     selectMyList,
   ]);
+
+  const sleep = useCallback(
+    (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }),
+    []
+  );
+
+  const waitForServerDownload = useCallback(
+    async (videoId: string) => {
+      if (!serverUrl) throw new Error("Not connected to server");
+      const timeoutMs = 10 * 60 * 1000;
+      const intervalMs = 2000;
+      const start = Date.now();
+
+      while (Date.now() - start < timeoutMs) {
+        const status = await api.getServerDownloadStatus(serverUrl, videoId);
+        if (status.status === "completed") return;
+        if (status.status === "failed") {
+          throw new Error(status.error || "Server download failed");
+        }
+        await sleep(intervalMs);
+      }
+
+      throw new Error("Server download timed out");
+    },
+    [serverUrl, sleep]
+  );
+
+  const waitForLocalVideo = useCallback(
+    async (videoId: string) => {
+      const timeoutMs = 10 * 60 * 1000;
+      const intervalMs = 1000;
+      const start = Date.now();
+
+      while (Date.now() - start < timeoutMs) {
+        if (videoExistsLocally(videoId)) return;
+        await sleep(intervalMs);
+      }
+
+      throw new Error("Sync to mobile timed out");
+    },
+    [sleep]
+  );
+
+  const playSubscriptionVideo = useCallback(
+    (video: RemoteVideoWithStatus) => {
+      if (!serverUrl) return;
+      const localPath =
+        getVideoLocalPath(video.id) ??
+        libraryVideos.find((v) => v.id === video.id)?.localPath;
+
+      const streamingVideo: StreamingVideo = {
+        id: video.id,
+        title: video.title,
+        channelTitle: video.channelTitle,
+        duration: video.duration,
+        thumbnailUrl: video.thumbnailUrl ?? undefined,
+        localPath: localPath ?? undefined,
+      };
+
+      startPlaylist("subscriptions", "Subscriptions", [streamingVideo], 0, serverUrl);
+      router.push(`/player/${video.id}`);
+    },
+    [libraryVideos, serverUrl, startPlaylist, router]
+  );
+
+  const handleSubscriptionVideoPress = useCallback(
+    async (video: RemoteVideoWithStatus) => {
+      if (!serverUrl) return;
+      if (pendingVideoIds.has(video.id)) return;
+
+      setPending(video.id, true);
+      try {
+        if (videoExistsLocally(video.id)) {
+          playSubscriptionVideo(video);
+          return;
+        }
+
+        const response = await api.requestServerDownload(serverUrl, { videoId: video.id });
+        if (!response.success && !response.status) {
+          throw new Error(response.message || "Server refused download request");
+        }
+        await waitForServerDownload(video.id);
+
+        if (!videoExistsLocally(video.id)) {
+          queueDownload(video.id, {
+            title: video.title,
+            channelTitle: video.channelTitle,
+            duration: video.duration,
+            thumbnailUrl: video.thumbnailUrl ?? undefined,
+          });
+          await waitForLocalVideo(video.id);
+        }
+
+        playSubscriptionVideo(video);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to prepare video";
+        Alert.alert("Unable to play video", message);
+      } finally {
+        setPending(video.id, false);
+      }
+    },
+    [
+      serverUrl,
+      pendingVideoIds,
+      setPending,
+      queueDownload,
+      waitForServerDownload,
+      waitForLocalVideo,
+      playSubscriptionVideo,
+    ]
+  );
 
   const handlePlayVideo = useCallback(
     (video: RemoteVideoWithStatus) => {
@@ -201,14 +323,14 @@ export default function SyncScreen() {
         contextTitle = selectedPlaylist.title;
         contextId = `playlist-${selectedPlaylist.playlistId}`;
         currentVideos = playlistVideos;
-      } else if (selectedSubscription) {
-        contextTitle = selectedSubscription.channelTitle;
-        contextId = `subscription-${selectedSubscription.channelId}`;
-        currentVideos = subscriptionVideos;
       } else if (selectedMyList) {
         contextTitle = selectedMyList.name;
         contextId = `mylist-${selectedMyList.id}`;
         currentVideos = myListVideos;
+      } else if (activeTab === "subscriptions") {
+        contextTitle = "Subscriptions";
+        contextId = "subscriptions";
+        currentVideos = subscriptionVideos;
       }
 
       const playlistStreamingVideos: StreamingVideo[] = currentVideos.map(
@@ -246,8 +368,8 @@ export default function SyncScreen() {
       libraryVideos,
       selectedChannel,
       selectedPlaylist,
-      selectedSubscription,
       selectedMyList,
+      activeTab,
       channelVideos,
       playlistVideos,
       subscriptionVideos,
@@ -320,13 +442,11 @@ export default function SyncScreen() {
   }
 
   // Video list view for selected channel/playlist/subscription/mylist
-  const isShowingVideos =
-    selectedChannel || selectedPlaylist || selectedSubscription || selectedMyList;
+  const isShowingVideos = selectedChannel || selectedPlaylist || selectedMyList;
 
   const getCurrentVideos = () => {
     if (selectedChannel) return channelVideos;
     if (selectedPlaylist) return playlistVideos;
-    if (selectedSubscription) return subscriptionVideos;
     if (selectedMyList) return myListVideos;
     return [];
   };
@@ -335,7 +455,6 @@ export default function SyncScreen() {
   const getCurrentTitle = () => {
     if (selectedChannel) return selectedChannel.channelTitle;
     if (selectedPlaylist) return selectedPlaylist.title;
-    if (selectedSubscription) return selectedSubscription.channelTitle;
     if (selectedMyList) return selectedMyList.name;
     return "";
   };
@@ -377,12 +496,6 @@ export default function SyncScreen() {
         playlistType = "playlist";
         sourceId = selectedPlaylist.channelId;
         thumbnailUrl = selectedPlaylist.thumbnailUrl;
-      } else if (selectedSubscription) {
-        playlistId = `subscription_${selectedSubscription.channelId}`;
-        playlistTitle = selectedSubscription.channelTitle;
-        playlistType = "subscription";
-        sourceId = selectedSubscription.channelId;
-        thumbnailUrl = selectedSubscription.thumbnailUrl;
       } else if (selectedMyList) {
         playlistId = `mylist_${selectedMyList.id}`;
         playlistTitle = selectedMyList.name;
@@ -569,13 +682,40 @@ export default function SyncScreen() {
       )}
 
       {activeTab === "subscriptions" && (
-        <SubscriptionList
-          subscriptions={subscriptions}
-          isLoading={isLoadingSubscriptions}
-          error={subscriptionsError}
-          onSubscriptionPress={handleSubscriptionPress}
-          onRefresh={handleRefreshSubscriptions}
-        />
+        <>
+          {isLoadingSubscriptions && subscriptionVideos.length === 0 ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color="#6366f1" />
+              <Text style={styles.loadingText}>Loading subscriptions...</Text>
+            </View>
+          ) : subscriptionsError ? (
+            <View style={styles.centered}>
+              <Text style={styles.errorText}>Failed to load subscriptions</Text>
+              <Text style={styles.errorDetail}>{subscriptionsError}</Text>
+            </View>
+          ) : subscriptionVideos.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={styles.emptyText}>No subscription videos yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={subscriptionVideos}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.gridRow}
+              contentContainerStyle={styles.gridList}
+              renderItem={({ item }) => (
+                <SubscriptionVideoGridItem
+                  video={item}
+                  isPending={pendingVideoIds.has(item.id)}
+                  onPress={() => handleSubscriptionVideoPress(item)}
+                />
+              )}
+              refreshing={isLoadingSubscriptions}
+              onRefresh={handleRefreshSubscriptions}
+            />
+          )}
+        </>
       )}
 
       {activeTab === "mylists" && (
@@ -699,6 +839,13 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "600",
+  },
+  gridList: {
+    padding: 16,
+    paddingBottom: 24,
+  },
+  gridRow: {
+    justifyContent: "space-between",
   },
   videoList: {
     paddingVertical: 8,

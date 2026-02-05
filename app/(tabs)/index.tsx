@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,17 +21,20 @@ import {
   ChannelList,
   PlaylistList,
   VideoListItem,
-  SubscriptionList,
   MyListsList,
+  SubscriptionVideoGridItem,
 } from "../../components/sync";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Smartphone, ArrowLeft, Play } from "../../theme/icons";
 import type {
   RemoteChannel,
   RemotePlaylist,
   RemoteVideoWithStatus,
-  RemoteSubscription,
   RemoteMyList,
 } from "../../types";
 import type { StreamingVideo } from "../../stores/playback";
+import { api } from "../../services/api";
+import { getVideoLocalPath, videoExistsLocally } from "../../services/downloader";
 
 export default function HomeScreen() {
   const serverUrl = useConnectionStore((s) => s.serverUrl);
@@ -47,7 +51,6 @@ export default function HomeScreen() {
     setActiveTab,
     channels,
     playlists,
-    subscriptions,
     myLists,
     isLoadingChannels,
     isLoadingPlaylists,
@@ -63,7 +66,6 @@ export default function HomeScreen() {
     channelVideos,
     selectedPlaylist,
     playlistVideos,
-    selectedSubscription,
     subscriptionVideos,
     selectedMyList,
     myListVideos,
@@ -75,11 +77,9 @@ export default function HomeScreen() {
     fetchMyLists,
     fetchChannelVideos,
     fetchPlaylistVideos,
-    fetchSubscriptionVideos,
     fetchMyListVideos,
     selectChannel,
     selectPlaylist,
-    selectSubscription,
     selectMyList,
     toggleVideoSelection,
     selectAllVideos,
@@ -94,6 +94,20 @@ export default function HomeScreen() {
   // Set of video IDs already synced to mobile
   const syncedVideoIds = new Set(libraryVideos.map((v) => v.id));
 
+  const [pendingVideoIds, setPendingVideoIds] = useState<Set<string>>(new Set());
+
+  const setPending = useCallback((videoId: string, isPending: boolean) => {
+    setPendingVideoIds((prev) => {
+      const next = new Set(prev);
+      if (isPending) {
+        next.add(videoId);
+      } else {
+        next.delete(videoId);
+      }
+      return next;
+    });
+  }, []);
+
   // Download status
   const activeDownloads = downloadQueue.filter((d) => d.status === "downloading");
   const queuedDownloads = downloadQueue.filter((d) => d.status === "queued");
@@ -106,7 +120,7 @@ export default function HomeScreen() {
       fetchChannels(serverUrl);
     } else if (activeTab === "playlists" && playlists.length === 0) {
       fetchPlaylists(serverUrl);
-    } else if (activeTab === "subscriptions" && subscriptions.length === 0) {
+    } else if (activeTab === "subscriptions" && subscriptionVideos.length === 0) {
       fetchSubscriptions(serverUrl);
     } else if (activeTab === "mylists" && myLists.length === 0) {
       fetchMyLists(serverUrl);
@@ -116,7 +130,7 @@ export default function HomeScreen() {
     serverUrl,
     channels.length,
     playlists.length,
-    subscriptions.length,
+    subscriptionVideos.length,
     myLists.length,
     fetchChannels,
     fetchPlaylists,
@@ -128,6 +142,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!serverUrl) {
       resetSyncStore();
+      setPendingVideoIds(new Set());
     }
   }, [serverUrl, resetSyncStore]);
 
@@ -161,13 +176,6 @@ export default function HomeScreen() {
     [serverUrl, fetchPlaylistVideos]
   );
 
-  const handleSubscriptionPress = useCallback(
-    (subscription: RemoteSubscription) => {
-      if (serverUrl) fetchSubscriptionVideos(serverUrl, subscription);
-    },
-    [serverUrl, fetchSubscriptionVideos]
-  );
-
   const handleMyListPress = useCallback(
     (myList: RemoteMyList) => {
       if (serverUrl) fetchMyListVideos(serverUrl, myList);
@@ -180,21 +188,132 @@ export default function HomeScreen() {
       selectChannel(null);
     } else if (selectedPlaylist) {
       selectPlaylist(null);
-    } else if (selectedSubscription) {
-      selectSubscription(null);
     } else if (selectedMyList) {
       selectMyList(null);
     }
   }, [
     selectedChannel,
     selectedPlaylist,
-    selectedSubscription,
     selectedMyList,
     selectChannel,
     selectPlaylist,
-    selectSubscription,
     selectMyList,
   ]);
+
+  const sleep = useCallback(
+    (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }),
+    []
+  );
+
+  const waitForServerDownload = useCallback(
+    async (videoId: string) => {
+      if (!serverUrl) throw new Error("Not connected to server");
+      const timeoutMs = 10 * 60 * 1000;
+      const intervalMs = 2000;
+      const start = Date.now();
+
+      while (Date.now() - start < timeoutMs) {
+        const status = await api.getServerDownloadStatus(serverUrl, videoId);
+        if (status.status === "completed") return;
+        if (status.status === "failed") {
+          throw new Error(status.error || "Server download failed");
+        }
+        await sleep(intervalMs);
+      }
+
+      throw new Error("Server download timed out");
+    },
+    [serverUrl, sleep]
+  );
+
+  const waitForLocalVideo = useCallback(
+    async (videoId: string) => {
+      const timeoutMs = 10 * 60 * 1000;
+      const intervalMs = 1000;
+      const start = Date.now();
+
+      while (Date.now() - start < timeoutMs) {
+        if (videoExistsLocally(videoId)) return;
+        await sleep(intervalMs);
+      }
+
+      throw new Error("Sync to mobile timed out");
+    },
+    [sleep]
+  );
+
+  const playSubscriptionVideo = useCallback(
+    (video: RemoteVideoWithStatus) => {
+      if (!serverUrl) return;
+      const localPath =
+        getVideoLocalPath(video.id) ??
+        libraryVideos.find((v) => v.id === video.id)?.localPath;
+
+      const streamingVideo: StreamingVideo = {
+        id: video.id,
+        title: video.title,
+        channelTitle: video.channelTitle,
+        duration: video.duration,
+        thumbnailUrl: video.thumbnailUrl ?? undefined,
+        localPath: localPath ?? undefined,
+      };
+
+      startPlaylist("subscriptions", "Subscriptions", [streamingVideo], 0, serverUrl);
+      router.push(`/player/${video.id}`);
+    },
+    [libraryVideos, serverUrl, startPlaylist, router]
+  );
+
+  const handleSubscriptionVideoPress = useCallback(
+    async (video: RemoteVideoWithStatus) => {
+      if (!serverUrl) return;
+      if (pendingVideoIds.has(video.id)) return;
+
+      setPending(video.id, true);
+      try {
+        if (videoExistsLocally(video.id)) {
+          playSubscriptionVideo(video);
+          return;
+        }
+
+        const response = await api.requestServerDownload(serverUrl, { videoId: video.id });
+        if (!response.success && !response.status) {
+          throw new Error(response.message || "Server refused download request");
+        }
+        await waitForServerDownload(video.id);
+
+        if (!videoExistsLocally(video.id)) {
+          queueDownload(video.id, {
+            title: video.title,
+            channelTitle: video.channelTitle,
+            duration: video.duration,
+            thumbnailUrl: video.thumbnailUrl ?? undefined,
+          });
+          await waitForLocalVideo(video.id);
+        }
+
+        playSubscriptionVideo(video);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to prepare video";
+        Alert.alert("Unable to play video", message);
+      } finally {
+        setPending(video.id, false);
+      }
+    },
+    [
+      serverUrl,
+      pendingVideoIds,
+      setPending,
+      queueDownload,
+      waitForServerDownload,
+      waitForLocalVideo,
+      playSubscriptionVideo,
+    ]
+  );
 
   // Play a single video (streaming or local)
   const handlePlayVideo = useCallback(
@@ -223,20 +342,20 @@ export default function HomeScreen() {
       } else if (selectedPlaylist) {
         contextTitle = selectedPlaylist.title;
         contextId = `playlist-${selectedPlaylist.playlistId}`;
-      } else if (selectedSubscription) {
-        contextTitle = selectedSubscription.channelTitle;
-        contextId = `subscription-${selectedSubscription.channelId}`;
       } else if (selectedMyList) {
         contextTitle = selectedMyList.name;
         contextId = `mylist-${selectedMyList.id}`;
+      } else if (activeTab === "subscriptions") {
+        contextTitle = "Subscriptions";
+        contextId = "subscriptions";
       }
 
       // Get the current video list for playlist context
       let currentVideos: RemoteVideoWithStatus[] = [];
       if (selectedChannel) currentVideos = channelVideos;
       else if (selectedPlaylist) currentVideos = playlistVideos;
-      else if (selectedSubscription) currentVideos = subscriptionVideos;
       else if (selectedMyList) currentVideos = myListVideos;
+      else if (activeTab === "subscriptions") currentVideos = subscriptionVideos;
 
       // Convert to StreamingVideo array
       const playlistStreamingVideos: StreamingVideo[] = currentVideos.map(
@@ -276,13 +395,14 @@ export default function HomeScreen() {
       libraryVideos,
       selectedChannel,
       selectedPlaylist,
-      selectedSubscription,
       selectedMyList,
+      activeTab,
       channelVideos,
       playlistVideos,
       subscriptionVideos,
       myListVideos,
       startPlaylist,
+      router,
     ]
   );
 
@@ -322,14 +442,14 @@ export default function HomeScreen() {
       contextTitle = selectedChannel.channelTitle;
       contextId = `channel-${selectedChannel.channelId}`;
       currentVideos = channelVideos;
-    } else if (selectedSubscription) {
-      contextTitle = selectedSubscription.channelTitle;
-      contextId = `subscription-${selectedSubscription.channelId}`;
-      currentVideos = subscriptionVideos;
     } else if (selectedMyList) {
       contextTitle = selectedMyList.name;
       contextId = `mylist-${selectedMyList.id}`;
       currentVideos = myListVideos;
+    } else if (activeTab === "subscriptions") {
+      contextTitle = "Subscriptions";
+      contextId = "subscriptions";
+      currentVideos = subscriptionVideos;
     }
 
     // Get playable videos (downloaded on server)
@@ -358,8 +478,8 @@ export default function HomeScreen() {
     serverUrl,
     selectedPlaylist,
     selectedChannel,
-    selectedSubscription,
     selectedMyList,
+    activeTab,
     playlistVideos,
     channelVideos,
     subscriptionVideos,
@@ -421,7 +541,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📱</Text>
+          <Smartphone size={64} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>LearnifyTube</Text>
           <Text style={styles.emptyText}>
             Connect to your LearnifyTube desktop app to browse and sync videos
@@ -437,13 +557,11 @@ export default function HomeScreen() {
   }
 
   // Video list view for selected channel/playlist/subscription/mylist
-  const isShowingVideos =
-    selectedChannel || selectedPlaylist || selectedSubscription || selectedMyList;
+  const isShowingVideos = selectedChannel || selectedPlaylist || selectedMyList;
 
   const getCurrentVideos = () => {
     if (selectedChannel) return channelVideos;
     if (selectedPlaylist) return playlistVideos;
-    if (selectedSubscription) return subscriptionVideos;
     if (selectedMyList) return myListVideos;
     return [];
   };
@@ -452,7 +570,6 @@ export default function HomeScreen() {
   const getCurrentTitle = () => {
     if (selectedChannel) return selectedChannel.channelTitle;
     if (selectedPlaylist) return selectedPlaylist.title;
-    if (selectedSubscription) return selectedSubscription.channelTitle;
     if (selectedMyList) return selectedMyList.name;
     return "";
   };
@@ -495,12 +612,6 @@ export default function HomeScreen() {
         playlistType = "playlist";
         sourceId = selectedPlaylist.channelId;
         thumbnailUrl = selectedPlaylist.thumbnailUrl;
-      } else if (selectedSubscription) {
-        playlistId = `subscription_${selectedSubscription.channelId}`;
-        playlistTitle = selectedSubscription.channelTitle;
-        playlistType = "subscription";
-        sourceId = selectedSubscription.channelId;
-        thumbnailUrl = selectedSubscription.thumbnailUrl;
       } else if (selectedMyList) {
         playlistId = `mylist_${selectedMyList.id}`;
         playlistTitle = selectedMyList.name;
@@ -540,7 +651,7 @@ export default function HomeScreen() {
         {/* Header with back button */}
         <View style={styles.videoHeader}>
           <Pressable style={styles.backButton} onPress={handleBackPress}>
-            <Text style={styles.backIcon}>←</Text>
+            <ArrowLeft size={18} color={colors.foreground} />
           </Pressable>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle} numberOfLines={1}>
@@ -563,7 +674,7 @@ export default function HomeScreen() {
               disabled={isFullySaved}
             >
               <Text style={styles.saveOfflineButtonText}>
-                {isFullySaved ? "✓ Saved" : "Save All"}
+                {isFullySaved ? "Saved" : "Save All"}
               </Text>
             </Pressable>
           )}
@@ -610,6 +721,7 @@ export default function HomeScreen() {
             )}
             {playableCount > 0 && selectedVideoIds.size === 0 && (
               <Pressable style={styles.playAllButton} onPress={handlePlayAll}>
+                <Play size={14} color={colors.foreground} fill={colors.foreground} />
                 <Text style={styles.playAllButtonText}>
                   Play All ({playableCount})
                 </Text>
@@ -621,7 +733,7 @@ export default function HomeScreen() {
         {/* Video list */}
         {isLoadingVideos ? (
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color="#e94560" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Loading videos...</Text>
           </View>
         ) : videosError ? (
@@ -685,7 +797,7 @@ export default function HomeScreen() {
             <View style={styles.downloadStatus}>
               {activeDownloads.length > 0 && (
                 <Text style={styles.downloadStatusText}>
-                  ↓ {activeDownloads.length}
+                  {activeDownloads.length}
                   {activeDownloads[0] && ` (${activeDownloads[0].progress}%)`}
                 </Text>
               )}
@@ -730,13 +842,40 @@ export default function HomeScreen() {
       )}
 
       {activeTab === "subscriptions" && (
-        <SubscriptionList
-          subscriptions={subscriptions}
-          isLoading={isLoadingSubscriptions}
-          error={subscriptionsError}
-          onSubscriptionPress={handleSubscriptionPress}
-          onRefresh={handleRefreshSubscriptions}
-        />
+        <>
+          {isLoadingSubscriptions && subscriptionVideos.length === 0 ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading subscriptions...</Text>
+            </View>
+          ) : subscriptionsError ? (
+            <View style={styles.centered}>
+              <Text style={styles.errorText}>Failed to load subscriptions</Text>
+              <Text style={styles.errorDetail}>{subscriptionsError}</Text>
+            </View>
+          ) : subscriptionVideos.length === 0 ? (
+            <View style={styles.centered}>
+              <Text style={styles.emptyListText}>No subscription videos yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={subscriptionVideos}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.gridRow}
+              contentContainerStyle={styles.gridList}
+              renderItem={({ item }) => (
+                <SubscriptionVideoGridItem
+                  video={item}
+                  isPending={pendingVideoIds.has(item.id)}
+                  onPress={() => handleSubscriptionVideoPress(item)}
+                />
+              )}
+              refreshing={isLoadingSubscriptions}
+              onRefresh={handleRefreshSubscriptions}
+            />
+          )}
+        </>
       )}
 
       {activeTab === "mylists" && (
@@ -755,78 +894,75 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#16213e",
+    backgroundColor: colors.background,
   },
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    padding: spacing.xl,
   },
   loadingText: {
-    color: "#888",
-    fontSize: 14,
-    marginTop: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
+    marginTop: spacing.sm + 4,
   },
   errorText: {
-    color: "#e94560",
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 8,
+    color: colors.destructive,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.sm,
   },
   errorDetail: {
-    color: "#888",
+    color: colors.mutedForeground,
     fontSize: 13,
     textAlign: "center",
   },
   emptyListText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
+    paddingHorizontal: spacing.xl,
   },
   emptyTitle: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 12,
+    color: colors.foreground,
+    fontSize: fontSize["3xl"],
+    fontWeight: fontWeight.bold,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm + 4,
   },
   emptyText: {
-    color: "#a0a0a0",
-    fontSize: 16,
+    color: colors.mutedForeground,
+    fontSize: fontSize.md,
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: spacing.xl,
     lineHeight: 24,
   },
   connectButton: {
-    backgroundColor: "#e94560",
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
   },
   connectButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: colors.primaryForeground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
   },
   connectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#1a1a2e",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: "#2a2a4e",
+    borderBottomColor: colors.border,
   },
   connectionInfo: {
     flexDirection: "row",
@@ -837,75 +973,71 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#22c55e",
-    marginRight: 8,
+    backgroundColor: colors.success,
+    marginRight: spacing.sm,
   },
   connectionText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.medium,
   },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: spacing.sm + 4,
   },
   downloadStatus: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   downloadStatusText: {
-    color: "#e94560",
-    fontSize: 12,
-    fontWeight: "600",
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
   },
   queuedStatusText: {
-    color: "#888",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
   },
   disconnectButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm + 4,
     paddingVertical: 6,
     borderRadius: 6,
-    backgroundColor: "#374151",
+    backgroundColor: colors.muted,
   },
   disconnectButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
   },
   videoHeader: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    backgroundColor: "#1a1a2e",
+    padding: spacing.md,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: "#2a2a4e",
+    borderBottomColor: colors.border,
   },
   backButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
-  },
-  backIcon: {
-    color: "#fff",
-    fontSize: 18,
+    marginRight: spacing.sm + 4,
   },
   headerTitleContainer: {
     flex: 1,
   },
   headerTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
   },
   headerSubtitle: {
-    color: "#888",
+    color: colors.mutedForeground,
     fontSize: 13,
     marginTop: 2,
   },
@@ -913,76 +1045,86 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 12,
-    backgroundColor: "#1a1a2e",
+    padding: spacing.sm + 4,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: "#2a2a4e",
+    borderBottomColor: colors.border,
   },
   toolbarButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.sm,
     borderRadius: 6,
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
   },
   toolbarButtonText: {
-    color: "#fff",
+    color: colors.foreground,
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: fontWeight.medium,
   },
   syncAllButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 6,
-    backgroundColor: "#e94560",
+    backgroundColor: colors.primary,
   },
   syncAllButtonText: {
-    color: "#fff",
+    color: colors.primaryForeground,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: fontWeight.semibold,
   },
   playAllButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 6,
-    backgroundColor: "#22c55e",
+    backgroundColor: colors.success,
     marginLeft: "auto",
   },
   playAllButtonText: {
-    color: "#fff",
+    color: colors.foreground,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: fontWeight.semibold,
+  },
+  gridList: {
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+  },
+  gridRow: {
+    justifyContent: "space-between",
   },
   videoList: {
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   saveOfflineButton: {
-    backgroundColor: "#6366f1",
+    backgroundColor: colors.primary,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
   },
   saveOfflineButtonDisabled: {
-    backgroundColor: "#22c55e",
+    backgroundColor: colors.success,
   },
   saveOfflineButtonText: {
-    color: "#fff",
+    color: colors.primaryForeground,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: fontWeight.semibold,
   },
   progressContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: "#1a1a2e",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.card,
   },
   progressBar: {
     height: 4,
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
     borderRadius: 2,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#22c55e",
+    backgroundColor: colors.success,
     borderRadius: 2,
   },
 });

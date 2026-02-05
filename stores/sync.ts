@@ -5,7 +5,6 @@ import type {
   RemoteFavorite,
   RemoteVideoWithStatus,
   ServerDownloadStatus,
-  RemoteSubscription,
   RemoteMyList,
   BrowseTab,
 } from "../types";
@@ -40,7 +39,6 @@ interface SyncStore {
   channels: RemoteChannel[];
   playlists: RemotePlaylist[];
   favorites: RemoteFavorite[];
-  subscriptions: RemoteSubscription[];
   myLists: RemoteMyList[];
 
   // Selected item + its videos
@@ -48,7 +46,6 @@ interface SyncStore {
   channelVideos: RemoteVideoWithStatus[];
   selectedPlaylist: RemotePlaylist | null;
   playlistVideos: RemoteVideoWithStatus[];
-  selectedSubscription: RemoteSubscription | null;
   subscriptionVideos: RemoteVideoWithStatus[];
   selectedMyList: RemoteMyList | null;
   myListVideos: RemoteVideoWithStatus[];
@@ -69,13 +66,11 @@ interface SyncStore {
   fetchChannelVideos: (serverUrl: string, channel: RemoteChannel) => Promise<void>;
   fetchPlaylistVideos: (serverUrl: string, playlist: RemotePlaylist) => Promise<void>;
   fetchSubscriptions: (serverUrl: string) => Promise<void>;
-  fetchSubscriptionVideos: (serverUrl: string, subscription: RemoteSubscription) => Promise<void>;
   fetchMyLists: (serverUrl: string) => Promise<void>;
   fetchMyListVideos: (serverUrl: string, myList: RemoteMyList) => Promise<void>;
 
   selectChannel: (channel: RemoteChannel | null) => void;
   selectPlaylist: (playlist: RemotePlaylist | null) => void;
-  selectSubscription: (subscription: RemoteSubscription | null) => void;
   selectMyList: (myList: RemoteMyList | null) => void;
 
   toggleVideoSelection: (videoId: string) => void;
@@ -117,13 +112,11 @@ const initialState = {
   channels: [],
   playlists: [],
   favorites: [],
-  subscriptions: [],
   myLists: [],
   selectedChannel: null,
   channelVideos: [],
   selectedPlaylist: null,
   playlistVideos: [],
-  selectedSubscription: null,
   subscriptionVideos: [],
   selectedMyList: null,
   myListVideos: [],
@@ -142,7 +135,6 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
       channelVideos: [],
       selectedPlaylist: null,
       playlistVideos: [],
-      selectedSubscription: null,
       subscriptionVideos: [],
       selectedMyList: null,
       myListVideos: [],
@@ -227,33 +219,12 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
   fetchSubscriptions: async (serverUrl) => {
     set({ isLoadingSubscriptions: true, subscriptionsError: null });
     try {
-      const { subscriptions } = await api.getSubscriptions(serverUrl);
-      set({ subscriptions, isLoadingSubscriptions: false });
+      const { videos } = await api.getSubscriptions(serverUrl);
+      set({ subscriptionVideos: videos, isLoadingSubscriptions: false });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to fetch subscriptions";
       set({ subscriptionsError: message, isLoadingSubscriptions: false });
-    }
-  },
-
-  fetchSubscriptionVideos: async (serverUrl, subscription) => {
-    set({
-      isLoadingVideos: true,
-      videosError: null,
-      selectedSubscription: subscription,
-      subscriptionVideos: [],
-      selectedVideoIds: new Set(),
-    });
-    try {
-      const { videos } = await api.getSubscriptionVideos(
-        serverUrl,
-        subscription.channelId
-      );
-      set({ subscriptionVideos: videos, isLoadingVideos: false });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to fetch videos";
-      set({ videosError: message, isLoadingVideos: false });
     }
   },
 
@@ -299,14 +270,6 @@ export const useSyncStore = create<SyncStore>()((set, get) => ({
     set({
       selectedPlaylist: playlist,
       playlistVideos: [],
-      selectedVideoIds: new Set(),
-    });
-  },
-
-  selectSubscription: (subscription) => {
-    set({
-      selectedSubscription: subscription,
-      subscriptionVideos: [],
       selectedVideoIds: new Set(),
     });
   },
