@@ -50,8 +50,44 @@ All CI/CD runs on **free GitHub Actions** - no paid services required.
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | **CI** | Push/PR to main | Type check |
+| **Android APK (Downloadable)** | Push to main (mobile changes) or manual | Build installable APK artifact |
 | **Build** | Manual | Build APK/iOS for testing |
 | **Release** | Tags (`v*`) or manual | Build + submit to stores |
+
+### Direct APK Delivery (No Play Store)
+
+Use the `Android APK (Downloadable)` workflow for installable APK files that can be downloaded from Actions artifacts.
+
+No extra secrets are required for this workflow.
+
+### Trigger + Download with GitHub CLI
+
+```bash
+# 1) Trigger a release APK build
+gh workflow run "Android APK (Downloadable)" -f build_type=release
+
+# 2) Watch the latest run for this workflow
+RUN_ID=$(gh run list --workflow "Android APK (Downloadable)" --limit 1 --json databaseId -q '.[0].databaseId')
+gh run watch "$RUN_ID"
+
+# 3) Download APK artifact from that run
+gh run download "$RUN_ID" -n learnify-mobile-release-apk -D ./dist-apk
+
+# 4) Install on a connected Android device
+adb install -r ./dist-apk/*.apk
+```
+
+### One-Command Automation Script
+
+Prerequisites: authenticated GitHub CLI (`gh auth login`). For `--install`, Android Platform Tools (`adb`) must be in `PATH`.
+
+```bash
+# Trigger + wait + download artifact
+bash ./scripts/gh-android-apk.sh
+
+# Debug build on main and install to connected device
+bash ./scripts/gh-android-apk.sh --build-type debug --ref main --install
+```
 
 ### Quick Release
 
