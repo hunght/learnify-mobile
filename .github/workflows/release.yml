@@ -58,9 +58,9 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
         if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
-      - name: Build Android AAB (Release)
+      - name: Build Android release artifacts (AAB + APK)
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease assembleRelease
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -87,13 +87,26 @@ jobs:
           name: android-aab
           path: android/app/build/outputs/bundle/release/*.aab
 
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/*.apk
+
+      - name: Prepare GitHub Release files
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p release-assets
+          cp android/app/build/outputs/bundle/release/app-release.aab "release-assets/LearnifyTube-${{ github.ref_name }}.aab"
+          cp android/app/build/outputs/apk/release/app-release.apk "release-assets/LearnifyTube-${{ github.ref_name }}.apk"
+
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            android/app/build/outputs/bundle/release/*.aab
-            android/app/build/outputs/apk/release/*.apk
+            release-assets/*.aab
+            release-assets/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
