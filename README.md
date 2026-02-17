@@ -1,6 +1,6 @@
 # LearnifyTube Mobile
 
-Mobile companion app for LearnifyTube - sync and watch your downloaded YouTube videos offline on iOS and Android.
+Android companion app for LearnifyTube - sync and watch your downloaded YouTube videos offline.
 
 ## Features
 
@@ -15,7 +15,7 @@ Mobile companion app for LearnifyTube - sync and watch your downloaded YouTube v
 ### Prerequisites
 
 - Node.js 18+
-- iOS Simulator (macOS) or Android Emulator
+- Android Emulator or Android device (USB/Wi-Fi debugging)
 
 ### Installation
 
@@ -25,9 +25,6 @@ npm install
 
 # Start development server
 npm start
-
-# Run on iOS Simulator
-npm run ios
 
 # Run on Android Emulator
 npm run android
@@ -50,9 +47,9 @@ All CI/CD runs on **free GitHub Actions** - no paid services required.
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | **CI** | Push/PR to main | Type check |
+| **Build Android (Dev)** | Manual | Build Android APK for testing |
 | **Android APK (Downloadable)** | Push to main (mobile changes) or manual | Build installable APK artifact |
-| **Build** | Manual | Build APK/iOS for testing |
-| **Release** | Tags (`v*`) or manual | Build + submit to stores |
+| **Release Android** | Tags (`v*`) or manual | Build release APK/AAB + publish GitHub Release assets |
 
 ### Direct APK Delivery (No Play Store)
 
@@ -89,20 +86,23 @@ bash ./scripts/gh-android-apk.sh
 bash ./scripts/gh-android-apk.sh --build-type debug --ref main --install
 ```
 
-### Quick Release
+### Auto Release New Version (Android)
 
 ```bash
-# Create and push a tag to trigger auto-release
-git tag v1.0.0
-git push origin v1.0.0
+# Patch release: bump version + android.versionCode + commit + tag + push
+npm run release:android
+
+# Minor/major bump
+bash ./scripts/release-android.sh --bump minor
+
+# Explicit version
+bash ./scripts/release-android.sh --version 1.2.0
 ```
 
 This will:
 1. Build Android AAB + APK
-2. Build iOS IPA
-3. Upload to Google Play (internal track)
-4. Upload to TestFlight
-5. Create GitHub Release with artifacts
+2. Optionally upload to Google Play internal track (if `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is set)
+3. Create/Update GitHub Release and attach downloadable `.apk` and `.aab` files
 
 ### Store Submission Costs
 
@@ -110,7 +110,6 @@ This will:
 |------|------|-------|
 | GitHub Actions | **FREE** | Unlimited for public repos |
 | Google Play Developer | **$25** | One-time fee |
-| Apple Developer Program | **$99/year** | Required for App Store |
 
 ### GitHub Secrets Required
 
@@ -135,18 +134,6 @@ keytool -genkeypair -v -keystore release.keystore -alias learnify -keyalg RSA -k
 base64 -i release.keystore | pbcopy  # macOS
 ```
 
-#### iOS (App Store)
-
-| Secret | Description |
-|--------|-------------|
-| `APPLE_CERTIFICATE_BASE64` | Base64 encoded .p12 certificate |
-| `APPLE_CERTIFICATE_PASSWORD` | Certificate password |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | Base64 encoded .mobileprovision |
-| `APPLE_CODE_SIGN_IDENTITY` | e.g., "Apple Distribution: Your Name" |
-| `APPLE_PROVISIONING_PROFILE_NAME` | Profile name |
-| `APPLE_ID` | Your Apple ID email |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com |
-
 ## Local Build
 
 ```bash
@@ -156,13 +143,6 @@ npx expo prebuild
 # Build Android APK
 cd android && ./gradlew assembleRelease
 # Output: android/app/build/outputs/apk/release/
-
-# Build iOS (macOS only)
-cd ios && pod install
-xcodebuild -workspace LearnifyTube.xcworkspace \
-  -scheme LearnifyTube \
-  -configuration Release \
-  -sdk iphoneos
 ```
 
 ## Project Structure

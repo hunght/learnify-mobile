@@ -14,6 +14,7 @@
     "build:android:preview": "eas build --platform android --profile preview",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "ci:android:apk": "bash ./scripts/gh-android-apk.sh",
+    "release:android": "bash ./scripts/release-android.sh",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
     "knip": "knip",
