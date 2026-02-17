@@ -8,7 +8,7 @@ cd "$REPO_ROOT"
 BUMP_TYPE="patch"
 TARGET_VERSION=""
 REMOTE="origin"
-WORKFLOW_NAME="Release Android"
+WORKFLOW_NAME="Build Release APK"
 PUSH_CHANGES="true"
 WATCH_RUN="true"
 POLL_SECONDS=5
@@ -25,7 +25,7 @@ Options:
   --bump <patch|minor|major>   Semver bump type (default: patch)
   --version <x.y.z>            Explicit version (overrides --bump)
   --remote <name>              Git remote to push (default: origin)
-  --workflow <name>            Workflow name to watch (default: Release Android)
+  --workflow <name>            Workflow name to trigger/watch (default: Build Release APK)
   --no-push                    Do not push commit/tag
   --no-watch                   Do not wait for GitHub Actions release run
   --help                       Show this help
@@ -227,13 +227,19 @@ if [[ "$WATCH_RUN" == "true" ]]; then
   log "Checking gh authentication"
   gh auth status >/dev/null
 
+  log "Ensuring workflow exists: ${WORKFLOW_NAME}"
+  gh workflow view "$WORKFLOW_NAME" >/dev/null
+
+  log "Triggering workflow '${WORKFLOW_NAME}' on tag ${TAG}"
+  gh workflow run "$WORKFLOW_NAME" --ref "$TAG"
+
   HEAD_SHA="$(git rev-parse HEAD)"
   RUN_ID=""
 
   for ((i=1; i<=MAX_POLLS; i++)); do
     RUN_ID="$(gh run list \
       --workflow "$WORKFLOW_NAME" \
-      --event push \
+      --event workflow_dispatch \
       --limit 20 \
       --json databaseId,headSha \
       -q "map(select(.headSha == \"${HEAD_SHA}\"))[0].databaseId")"
@@ -250,21 +256,6 @@ if [[ "$WATCH_RUN" == "true" ]]; then
     gh run watch "$RUN_ID" --exit-status
   else
     log "Could not find workflow run for ${TAG}; check Actions tab manually."
-  fi
-
-  RELEASE_URL=""
-  for ((i=1; i<=MAX_POLLS; i++)); do
-    RELEASE_URL="$(gh release view "$TAG" --json url -q '.url' 2>/dev/null || true)"
-    if [[ -n "$RELEASE_URL" ]]; then
-      break
-    fi
-    sleep "$POLL_SECONDS"
-  done
-
-  if [[ -n "$RELEASE_URL" ]]; then
-    log "GitHub release is ready: ${RELEASE_URL}"
-  else
-    log "Tag pushed. Release page may still be processing for ${TAG}."
   fi
 fi
 

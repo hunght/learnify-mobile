@@ -40,98 +40,39 @@ npm run android
 
 ## CI/CD (100% Free)
 
-All CI/CD runs on **free GitHub Actions** - no paid services required.
+Only one workflow is kept:
+1. `Build Release APK` (`.github/workflows/android-apk.yml`)
+2. Trigger: manual only (`workflow_dispatch`)
+3. No trigger on push, PR, merge, or tag
 
-### Workflows
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| **CI** | Push/PR to main | Type check |
-| **Build Android (Dev)** | Manual | Build Android APK for testing |
-| **Android APK (Downloadable)** | Push to main (mobile changes) or manual | Build installable APK artifact |
-| **Release Android** | Tags (`v*`) or manual | Build release APK/AAB + publish GitHub Release assets |
-
-### Direct APK Delivery (No Play Store)
-
-Use the `Android APK (Downloadable)` workflow for installable APK files that can be downloaded from Actions artifacts.
-
-No extra secrets are required for this workflow.
-
-### Trigger + Download with GitHub CLI
+### Manual Build + Download
 
 ```bash
-# 1) Trigger a release APK build
-gh workflow run "Android APK (Downloadable)" -f build_type=release
+# Trigger release APK build manually
+gh workflow run "Build Release APK" --ref main
 
-# 2) Watch the latest run for this workflow
-RUN_ID=$(gh run list --workflow "Android APK (Downloadable)" --limit 1 --json databaseId -q '.[0].databaseId')
+# Watch the latest run for this workflow
+RUN_ID=$(gh run list --workflow "Build Release APK" --limit 1 --json databaseId -q '.[0].databaseId')
 gh run watch "$RUN_ID"
 
-# 3) Download APK artifact from that run
+# Download artifact
 gh run download "$RUN_ID" -n learnify-mobile-release-apk -D ./dist-apk
 
-# 4) Install on a connected Android device
+# Install on connected device
 adb install -r ./dist-apk/*.apk
 ```
 
-### One-Command Automation Script
-
-Prerequisites: authenticated GitHub CLI (`gh auth login`). For `--install`, Android Platform Tools (`adb`) must be in `PATH`.
+### Automation Scripts
 
 ```bash
-# Trigger + wait + download artifact
+# Trigger + wait + download release APK
 bash ./scripts/gh-android-apk.sh
 
-# Debug build on main and install to connected device
-bash ./scripts/gh-android-apk.sh --build-type debug --ref main --install
-```
+# Same flow on another ref and auto-install
+bash ./scripts/gh-android-apk.sh --ref main --install
 
-### Auto Release New Version (Android)
-
-```bash
-# Patch release: bump version + android.versionCode + commit + tag + push
+# Bump version + versionCode + commit + tag + push + trigger release APK workflow
 npm run release:android
-
-# Minor/major bump
-bash ./scripts/release-android.sh --bump minor
-
-# Explicit version
-bash ./scripts/release-android.sh --version 1.2.0
-```
-
-This will:
-1. Build Android AAB + APK
-2. Optionally upload to Google Play internal track (if `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is set)
-3. Create/Update GitHub Release and attach downloadable `.apk` and `.aab` files
-
-### Store Submission Costs
-
-| Item | Cost | Notes |
-|------|------|-------|
-| GitHub Actions | **FREE** | Unlimited for public repos |
-| Google Play Developer | **$25** | One-time fee |
-
-### GitHub Secrets Required
-
-To enable automatic store submission, add these secrets to your repo:
-
-#### Android (Google Play)
-
-| Secret | Description |
-|--------|-------------|
-| `ANDROID_KEYSTORE_BASE64` | Base64 encoded release keystore |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | Key alias |
-| `ANDROID_KEY_PASSWORD` | Key password |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play API service account JSON |
-
-**Setup:**
-```bash
-# Generate keystore
-keytool -genkeypair -v -keystore release.keystore -alias learnify -keyalg RSA -keysize 2048 -validity 10000
-
-# Encode to base64
-base64 -i release.keystore | pbcopy  # macOS
 ```
 
 ## Local Build

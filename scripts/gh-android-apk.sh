@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKFLOW_NAME="Android APK (Downloadable)"
-BUILD_TYPE="release"
+WORKFLOW_NAME="Build Release APK"
 OUTPUT_DIR="./dist-apk"
 RUN_INSTALL="false"
 REF=""
@@ -17,11 +16,10 @@ Usage:
   scripts/gh-android-apk.sh [options]
 
 Options:
-  --build-type <release|debug>  APK variant to build (default: release)
   --ref <git-ref>               Branch/tag/sha to run workflow on (default: current branch)
   --output-dir <path>           Where to download artifact (default: ./dist-apk)
   --install                     Install APK to connected Android device via adb
-  --workflow <name>             Workflow name (default: Android APK (Downloadable))
+  --workflow <name>             Workflow name (default: Build Release APK)
   --help                        Show this help
 USAGE
 }
@@ -39,10 +37,6 @@ require_cmd() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --build-type)
-      BUILD_TYPE="${2:-}"
-      shift 2
-      ;;
     --ref)
       REF="${2:-}"
       shift 2
@@ -71,11 +65,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$BUILD_TYPE" != "release" && "$BUILD_TYPE" != "debug" ]]; then
-  echo "Invalid --build-type: $BUILD_TYPE (expected: release or debug)" >&2
-  exit 1
-fi
-
 require_cmd gh
 require_cmd git
 
@@ -89,7 +78,7 @@ if [[ "$REF" == "HEAD" ]]; then
 fi
 
 HEAD_SHA="$(git rev-parse "$REF")"
-ARTIFACT_NAME="learnify-mobile-${BUILD_TYPE}-apk"
+ARTIFACT_NAME="learnify-mobile-release-apk"
 
 log "Checking gh authentication"
 gh auth status >/dev/null
@@ -97,8 +86,8 @@ gh auth status >/dev/null
 log "Ensuring workflow exists: ${WORKFLOW_NAME}"
 gh workflow view "$WORKFLOW_NAME" >/dev/null
 
-log "Triggering workflow on ref '${REF}' with build_type='${BUILD_TYPE}'"
-gh workflow run "$WORKFLOW_NAME" --ref "$REF" -f build_type="$BUILD_TYPE"
+log "Triggering workflow on ref '${REF}'"
+gh workflow run "$WORKFLOW_NAME" --ref "$REF"
 
 RUN_ID=""
 for ((i=1; i<=MAX_POLLS; i++)); do

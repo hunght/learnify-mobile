@@ -1,31 +1,7 @@
-name: Android APK (Downloadable)
+name: Build Release APK
 
 on:
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: "APK variant"
-        required: true
-        default: "release"
-        type: choice
-        options:
-          - release
-          - debug
-  push:
-    branches:
-      - main
-    paths:
-      - "app/**"
-      - "components/**"
-      - "services/**"
-      - "stores/**"
-      - "assets/**"
-      - "package.json"
-      - "package-lock.json"
-      - "app.json"
-      - "babel.config.js"
-      - "metro.config.js"
-      - ".github/workflows/android-apk.yml"
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -33,7 +9,7 @@ concurrency:
 
 jobs:
   build-android-apk:
-    name: Build Android APK
+    name: Build Android Release APK
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,15 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set build type
-        id: vars
-        run: |
-          BUILD_TYPE="${{ github.event.inputs.build_type }}"
-          if [ -z "$BUILD_TYPE" ]; then
-            BUILD_TYPE="release"
-          fi
-          echo "build_type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,26 +38,21 @@ jobs:
         run: |
           npx expo prebuild --platform android --clean --non-interactive
 
-      - name: Build APK
+      - name: Build Release APK
         working-directory: android
-        run: |
-          if [ "${{ steps.vars.outputs.build_type }}" = "debug" ]; then
-            ./gradlew --no-daemon assembleDebug
-          else
-            ./gradlew --no-daemon assembleRelease
-          fi
+        run: ./gradlew --no-daemon assembleRelease
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: learnify-mobile-${{ steps.vars.outputs.build_type }}-apk
-          path: android/app/build/outputs/apk/${{ steps.vars.outputs.build_type }}/*.apk
+          name: learnify-mobile-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           retention-days: 14
 
       - name: Build summary
         run: |
-          echo "### Android APK build complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Android release APK build complete" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Variant: \`${{ steps.vars.outputs.build_type }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Artifact: \`learnify-mobile-${{ steps.vars.outputs.build_type }}-apk\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Variant: \`release\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: \`learnify-mobile-release-apk\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Download from this run's Artifacts section." >> "$GITHUB_STEP_SUMMARY"
