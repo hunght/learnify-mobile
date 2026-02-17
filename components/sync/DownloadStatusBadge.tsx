@@ -1,4 +1,6 @@
 import { View, Text, StyleSheet } from "react-native";
+import { colors, radius, fontSize, fontWeight } from "../../theme";
+import { Check, Download, Clock, Circle } from "../../theme/icons";
 
 type DownloadStatus = "completed" | "downloading" | "queued" | "pending" | null;
 
@@ -17,49 +19,52 @@ export function DownloadStatusBadge({
     switch (status) {
       case "completed":
         return {
-          backgroundColor: "#22c55e",
-          textColor: "#fff",
+          backgroundColor: colors.success,
+          textColor: colors.foreground,
           label: "On Server",
-          icon: "✓",
+          Icon: Check,
         };
       case "downloading":
         return {
-          backgroundColor: "#eab308",
-          textColor: "#000",
+          backgroundColor: colors.warning,
+          textColor: colors.warningForeground,
           label: progress != null ? `${progress}%` : "Downloading",
-          icon: "↓",
+          Icon: Download,
         };
       case "queued":
         return {
-          backgroundColor: "#3b82f6",
-          textColor: "#fff",
+          backgroundColor: colors.primary,
+          textColor: colors.foreground,
           label: "Queued",
-          icon: "⏳",
+          Icon: Clock,
         };
       case "pending":
         return {
-          backgroundColor: "#6b7280",
-          textColor: "#fff",
+          backgroundColor: colors.pending,
+          textColor: colors.foreground,
           label: "Pending",
-          icon: "○",
+          Icon: Circle,
         };
       default:
         return {
-          backgroundColor: "#374151",
-          textColor: "#9ca3af",
+          backgroundColor: colors.muted,
+          textColor: colors.mutedForeground,
           label: "Not Downloaded",
-          icon: "○",
+          Icon: Circle,
         };
     }
   };
 
   const config = getStatusConfig();
+  const IconComponent = config.Icon;
 
   return (
     <View style={[styles.badge, { backgroundColor: config.backgroundColor }]}>
-      <Text style={[styles.icon, { color: config.textColor }]}>{config.icon}</Text>
+      <IconComponent size={10} color={config.textColor} strokeWidth={3} />
       {showLabel && (
-        <Text style={[styles.label, { color: config.textColor }]}>{config.label}</Text>
+        <Text style={[styles.label, { color: config.textColor }]}>
+          {config.label}
+        </Text>
       )}
     </View>
   );
@@ -71,15 +76,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radius.lg,
     gap: 4,
   },
-  icon: {
-    fontSize: 10,
-    fontWeight: "bold",
-  },
   label: {
-    fontSize: 10,
-    fontWeight: "500",
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
 });

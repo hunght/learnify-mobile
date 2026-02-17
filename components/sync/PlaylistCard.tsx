@@ -2,6 +2,8 @@ import { useState } from "react";
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import type { RemotePlaylist } from "../../types";
 import { api } from "../../services/api";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { ListVideo, Folder, Heart } from "../../theme/icons";
 
 interface PlaylistCardProps {
   playlist: RemotePlaylist;
@@ -48,9 +50,11 @@ export function PlaylistCard({
           />
         ) : (
           <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-            <Text style={styles.placeholderIcon}>
-              {playlist.type === "custom" ? "📋" : "📁"}
-            </Text>
+            {playlist.type === "custom" ? (
+              <ListVideo size={20} color={colors.mutedForeground} />
+            ) : (
+              <Folder size={20} color={colors.mutedForeground} />
+            )}
           </View>
         )}
         {itemCount > 0 && (
@@ -75,7 +79,11 @@ export function PlaylistCard({
       </View>
       {onSavePress && (
         <Pressable style={styles.saveButton} onPress={onSavePress}>
-          <Text style={styles.saveIcon}>{isFavorited ? "❤️" : "🤍"}</Text>
+          <Heart
+            size={20}
+            color={isFavorited ? colors.destructive : colors.mutedForeground}
+            fill={isFavorited ? colors.destructive : "none"}
+          />
         </Pressable>
       )}
     </Pressable>
@@ -85,19 +93,21 @@ export function PlaylistCard({
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    padding: 12,
-    backgroundColor: "#1f1f3a",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    padding: spacing.sm + 4,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.md,
     marginVertical: 6,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   thumbnailContainer: {
     width: 80,
     height: 45,
     borderRadius: 6,
     overflow: "hidden",
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
   },
   thumbnail: {
     width: "100%",
@@ -107,31 +117,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  placeholderIcon: {
-    fontSize: 20,
-  },
   countBadge: {
     position: "absolute",
     bottom: 2,
     right: 2,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: colors.overlay,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radius.sm,
   },
   countText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
   },
   info: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: spacing.sm + 4,
   },
   title: {
-    color: "#fff",
+    color: colors.foreground,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: fontWeight.semibold,
     marginBottom: 4,
   },
   metaRow: {
@@ -139,26 +146,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   type: {
-    color: "#e94560",
-    fontSize: 12,
-    fontWeight: "500",
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
   },
   dot: {
-    color: "#666",
+    color: colors.textTertiary,
     marginHorizontal: 6,
   },
   downloaded: {
-    color: "#888",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
   },
   saveButton: {
     width: 40,
     height: 40,
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 8,
-  },
-  saveIcon: {
-    fontSize: 20,
+    marginLeft: spacing.sm,
   },
 });

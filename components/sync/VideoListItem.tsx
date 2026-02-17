@@ -1,6 +1,8 @@
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import type { RemoteVideoWithStatus } from "../../types";
 import { DownloadStatusBadge } from "./DownloadStatusBadge";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Check, Film } from "../../theme/icons";
 
 interface VideoListItemProps {
   video: RemoteVideoWithStatus;
@@ -43,15 +45,17 @@ export function VideoListItem({
           />
         ) : (
           <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-            <Text style={styles.placeholderIcon}>🎬</Text>
+            <Film size={24} color={colors.mutedForeground} />
           </View>
         )}
         <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>{formatDuration(video.duration)}</Text>
+          <Text style={styles.durationText}>
+            {formatDuration(video.duration)}
+          </Text>
         </View>
         {isSyncedToMobile && (
           <View style={styles.syncedBadge}>
-            <Text style={styles.syncedIcon}>✓</Text>
+            <Check size={10} color={colors.foreground} strokeWidth={3} />
           </View>
         )}
       </View>
@@ -85,7 +89,7 @@ export function VideoListItem({
 
       {isSelected && (
         <View style={styles.checkbox}>
-          <Text style={styles.checkIcon}>✓</Text>
+          <Check size={14} color={colors.foreground} strokeWidth={3} />
         </View>
       )}
     </Pressable>
@@ -95,24 +99,25 @@ export function VideoListItem({
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    padding: 12,
-    backgroundColor: "#1f1f3a",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    padding: spacing.sm + 4,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.md,
     marginVertical: 4,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   selected: {
-    backgroundColor: "#2a2a5a",
-    borderWidth: 1,
-    borderColor: "#e94560",
+    backgroundColor: colors.muted,
+    borderColor: colors.primary,
   },
   thumbnailContainer: {
     width: 100,
     height: 56,
     borderRadius: 6,
     overflow: "hidden",
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
   },
   thumbnail: {
     width: "100%",
@@ -122,22 +127,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  placeholderIcon: {
-    fontSize: 24,
-  },
   durationBadge: {
     position: "absolute",
     bottom: 2,
     right: 2,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: colors.overlay,
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 3,
   },
   durationText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
   syncedBadge: {
     position: "absolute",
@@ -146,69 +148,59 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#4ade80",
+    backgroundColor: colors.success,
     justifyContent: "center",
     alignItems: "center",
   },
-  syncedIcon: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
-  },
   info: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: spacing.sm + 4,
   },
   title: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.medium,
     marginBottom: 2,
   },
   channel: {
-    color: "#888",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
     marginBottom: 6,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   playButton: {
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 12,
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.sm + 4,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radius.lg,
   },
   playButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
   },
   syncButton: {
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm + 4,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radius.lg,
   },
   syncButtonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
+    color: colors.primaryForeground,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: "#e94560",
+    borderRadius: radius.lg,
+    backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 8,
-  },
-  checkIcon: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
+    marginLeft: spacing.sm,
   },
 });

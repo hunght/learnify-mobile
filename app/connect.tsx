@@ -79,6 +79,11 @@ export default function ConnectScreen() {
       console.log("[Connect] Got", videosResponse.videos.length, "videos");
       setRemoteVideos(videosResponse.videos);
     } catch (error) {
+      // Ignore AbortError - user navigated away before connection completed
+      if (error instanceof Error && error.name === "AbortError") {
+        console.log("[Connect] Connection aborted (user navigated away)");
+        return;
+      }
       console.error("[Connect] Connection failed:", error);
       Alert.alert(
         "Connection Failed",
@@ -106,6 +111,11 @@ export default function ConnectScreen() {
       const videosResponse = await api.getVideos(url);
       setRemoteVideos(videosResponse.videos);
     } catch (error) {
+      // Ignore AbortError - user navigated away before connection completed
+      if (error instanceof Error && error.name === "AbortError") {
+        console.log("[Connect] Connection aborted (user navigated away)");
+        return;
+      }
       Alert.alert(
         "Connection Failed",
         "Could not connect to desktop. Make sure:\n\n1. Desktop app is running\n2. Sync server is enabled\n3. Both devices are on the same WiFi"

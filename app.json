@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1a1a2e"
+      "backgroundColor": "#0A0F1A"
     },
     "ios": {
       "supportsTablet": true,
@@ -27,7 +27,7 @@
       "package": "com.learnifytube.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1a1a2e"
+        "backgroundColor": "#0A0F1A"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": true,
@@ -45,7 +45,15 @@
     "plugins": [
       "expo-router",
       "expo-video",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "local-send-react-native",
+          "organization": "nexttradingbot"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

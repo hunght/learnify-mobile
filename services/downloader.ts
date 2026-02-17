@@ -22,6 +22,25 @@ const log = (message: string, data?: unknown) => {
 
 const getVideosDir = () => new Directory(Paths.document, "videos");
 
+/**
+ * Get the current local path for a video file.
+ * This resolves the path dynamically to handle sandbox container changes.
+ */
+export function getVideoLocalPath(videoId: string): string | null {
+  const videosDir = getVideosDir();
+  const videoFile = new File(videosDir, `${videoId}.mp4`);
+  return videoFile.exists ? videoFile.uri : null;
+}
+
+/**
+ * Check if a video exists locally.
+ */
+export function videoExistsLocally(videoId: string): boolean {
+  const videosDir = getVideosDir();
+  const videoFile = new File(videosDir, `${videoId}.mp4`);
+  return videoFile.exists;
+}
+
 export async function ensureVideosDir(): Promise<Directory> {
   const videosDir = getVideosDir();
   if (!videosDir.exists) {
@@ -99,6 +118,12 @@ export async function downloadVideo(
       }
 
       if (!result || result.status !== 200) {
+        // 202 means desktop is re-downloading the file
+        if (result?.status === 202) {
+          throw new Error(
+            "Video file missing on desktop - download queued. Please try again later."
+          );
+        }
         throw new Error(
           `Download failed: ${result?.status || "unknown error"}`
         );

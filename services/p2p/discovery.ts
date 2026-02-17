@@ -45,10 +45,31 @@ export function publishService(
   try {
     zeroconf.publishService(SERVICE_TYPE, "tcp", "local.", name, port, {
       videoCount: String(videoCount),
+      platform: "mobile",
     });
     log("Service published successfully");
   } catch (error) {
     log("Failed to publish service", error);
+    onError?.(error as Error);
+  }
+}
+
+// Publish presence without running a server (just for discovery by desktop)
+export function publishPresence(onError?: (error: Error) => void) {
+  ensureInitialized();
+
+  const name = getDeviceName();
+  log(`Publishing presence: ${name}`);
+
+  try {
+    // Use port 0 to indicate we're not running a server, just advertising presence
+    zeroconf.publishService(SERVICE_TYPE, "tcp", "local.", name, 53319, {
+      videoCount: "0",
+      platform: "mobile",
+    });
+    log("Presence published successfully");
+  } catch (error) {
+    log("Failed to publish presence", error);
     onError?.(error as Error);
   }
 }

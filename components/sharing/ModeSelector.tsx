@@ -1,4 +1,6 @@
 import { View, Text, StyleSheet, Pressable } from "react-native";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Upload, Download } from "../../theme/icons";
 
 type Mode = "share" | "receive";
 
@@ -14,7 +16,10 @@ export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
         style={[styles.option, selected === "share" && styles.optionSelected]}
         onPress={() => onSelect("share")}
       >
-        <Text style={styles.optionIcon}>📤</Text>
+        <Upload
+          size={32}
+          color={selected === "share" ? colors.primary : colors.mutedForeground}
+        />
         <Text
           style={[
             styles.optionText,
@@ -35,7 +40,12 @@ export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
         ]}
         onPress={() => onSelect("receive")}
       >
-        <Text style={styles.optionIcon}>📥</Text>
+        <Download
+          size={32}
+          color={
+            selected === "receive" ? colors.primary : colors.mutedForeground
+          }
+        />
         <Text
           style={[
             styles.optionText,
@@ -54,33 +64,30 @@ export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 12,
+    gap: spacing.sm + 4,
   },
   option: {
-    backgroundColor: "#1a1a2e",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     borderWidth: 2,
     borderColor: "transparent",
   },
   optionSelected: {
-    borderColor: "#e94560",
-  },
-  optionIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    borderColor: colors.primary,
   },
   optionText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    marginTop: spacing.sm,
     marginBottom: 4,
   },
   optionTextSelected: {
-    color: "#e94560",
+    color: colors.primary,
   },
   optionDescription: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
   },
 });

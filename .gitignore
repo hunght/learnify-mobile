@@ -54,3 +54,5 @@ yarn-error.*
 *.apk
 *.aab
 *.ipa
+
+.env.local

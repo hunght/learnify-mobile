@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import type { BrowseTab } from "../../types";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
 interface SyncTabBarProps {
   activeTab: BrowseTab;
@@ -42,30 +43,30 @@ export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#09090b",
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: "#27272a",
-    paddingTop: 8,
+    borderBottomColor: colors.border,
+    paddingTop: spacing.sm,
   },
   scrollContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm + 4,
     gap: 4,
   },
   tab: {
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
     marginHorizontal: 2,
   },
   activeTab: {
-    backgroundColor: "#27272a",
+    backgroundColor: colors.muted,
   },
   tabText: {
-    color: "#71717a",
-    fontSize: 14,
-    fontWeight: "600",
+    color: colors.textTertiary,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
   },
   activeTabText: {
-    color: "#fafafa",
+    color: colors.foreground,
   },
 });

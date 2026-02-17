@@ -11,6 +11,9 @@ import { Link } from "expo-router";
 import type { Video } from "../types";
 import { useDownloadStore } from "../stores/downloads";
 import { downloadManager } from "../services/downloadManager";
+import { videoExistsLocally } from "../services/downloader";
+import { colors, radius, spacing, fontSize, fontWeight } from "../theme";
+import { Check, AlertCircle, Film } from "../theme/icons";
 
 interface VideoCardProps {
   video: Video;
@@ -22,7 +25,7 @@ export function VideoCard({ video, style }: VideoCardProps) {
     state.queue.find((d) => d.videoId === video.id)
   );
 
-  const isDownloaded = !!video.localPath;
+  const isDownloaded = videoExistsLocally(video.id);
   const isDownloading = download?.status === "downloading";
   const isQueued = download?.status === "queued";
   const isFailed = download?.status === "failed";
@@ -53,7 +56,7 @@ export function VideoCard({ video, style }: VideoCardProps) {
           />
         ) : (
           <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-            <Text style={styles.thumbnailIcon}>🎬</Text>
+            <Film size={32} color={colors.mutedForeground} />
           </View>
         )}
         <View style={styles.durationBadge}>
@@ -79,12 +82,12 @@ export function VideoCard({ video, style }: VideoCardProps) {
         )}
         {isFailed && (
           <View style={styles.failedBadge}>
-            <Text style={styles.failedIcon}>!</Text>
+            <AlertCircle size={12} color={colors.foreground} />
           </View>
         )}
         {isDownloaded && !download && (
           <View style={styles.downloadedBadge}>
-            <Text style={styles.downloadedIcon}>✓</Text>
+            <Check size={12} color={colors.foreground} strokeWidth={3} />
           </View>
         )}
       </View>
@@ -134,7 +137,7 @@ function formatDuration(seconds: number): string {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    margin: 8,
+    margin: spacing.sm,
     maxWidth: "50%",
   },
   containerDisabled: {
@@ -142,9 +145,9 @@ const styles = StyleSheet.create({
   },
   thumbnailContainer: {
     aspectRatio: 16 / 9,
-    borderRadius: 8,
+    borderRadius: radius.md,
     overflow: "hidden",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.card,
   },
   thumbnail: {
     width: "100%",
@@ -154,22 +157,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  thumbnailIcon: {
-    fontSize: 32,
-  },
   durationBadge: {
     position: "absolute",
     bottom: 4,
     right: 4,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: colors.overlay,
     paddingHorizontal: 4,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radius.sm,
   },
   durationText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
   progressOverlay: {
     position: "absolute",
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -186,12 +186,12 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "#e94560",
+    backgroundColor: colors.primary,
   },
   progressText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
+    color: colors.foreground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
     zIndex: 1,
   },
   pendingOverlay: {
@@ -200,14 +200,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: colors.overlay,
     justifyContent: "center",
     alignItems: "center",
   },
   pendingText: {
-    color: "#a0a0a0",
-    fontSize: 10,
-    fontWeight: "500",
+    color: colors.mutedForeground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
   failedBadge: {
     position: "absolute",
@@ -216,14 +216,9 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#ef4444",
+    backgroundColor: colors.destructive,
     justifyContent: "center",
     alignItems: "center",
-  },
-  failedIcon: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
   },
   downloadedBadge: {
     position: "absolute",
@@ -232,59 +227,54 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#4ade80",
+    backgroundColor: colors.success,
     justifyContent: "center",
     alignItems: "center",
   },
-  downloadedIcon: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
   info: {
-    paddingTop: 8,
+    paddingTop: spacing.sm,
   },
   title: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
     marginBottom: 2,
   },
   channel: {
-    color: "#a0a0a0",
+    color: colors.mutedForeground,
     fontSize: 11,
   },
   cancelButton: {
     marginTop: 6,
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: "rgba(239, 68, 68, 0.2)",
-    borderRadius: 4,
+    backgroundColor: `${colors.destructive}33`,
+    borderRadius: radius.sm,
     alignSelf: "flex-start",
   },
   cancelButtonText: {
-    color: "#ef4444",
-    fontSize: 10,
-    fontWeight: "500",
+    color: colors.destructive,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
   failedActions: {
     marginTop: 4,
   },
   errorText: {
-    color: "#ef4444",
+    color: colors.destructive,
     fontSize: 9,
     marginBottom: 4,
   },
   retryButton: {
     paddingVertical: 4,
     paddingHorizontal: 8,
-    backgroundColor: "rgba(59, 130, 246, 0.2)",
-    borderRadius: 4,
+    backgroundColor: `${colors.primary}33`,
+    borderRadius: radius.sm,
     alignSelf: "flex-start",
   },
   retryButtonText: {
-    color: "#3b82f6",
-    fontSize: 10,
-    fontWeight: "500",
+    color: colors.primary,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
 });

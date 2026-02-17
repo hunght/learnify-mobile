@@ -1,5 +1,18 @@
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
-import type { PeerVideo, TransferProgress, DiscoveredPeer } from "../../types";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
+import type {
+  PeerVideo,
+  TransferProgress,
+  DiscoveredPeer,
+} from "../../types";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Check, ChevronLeft, Inbox } from "../../theme/icons";
 
 interface PeerVideoListProps {
   peer: DiscoveredPeer;
@@ -30,20 +43,23 @@ export function PeerVideoList({
     <View style={styles.container}>
       <View style={styles.header}>
         <Pressable onPress={onBack} style={styles.backButton}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <ChevronLeft size={20} color={colors.primary} />
+          <Text style={styles.backText}>Back</Text>
         </Pressable>
         <Text style={styles.peerName}>{peer.name}</Text>
       </View>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color="#e94560" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
           <Text style={styles.loadingText}>Loading videos...</Text>
         </View>
       ) : videos.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📭</Text>
-          <Text style={styles.emptyText}>No videos available from this device</Text>
+          <Inbox size={48} color={colors.mutedForeground} />
+          <Text style={styles.emptyText}>
+            No videos available from this device
+          </Text>
         </View>
       ) : (
         <>
@@ -65,14 +81,16 @@ export function PeerVideoList({
                     selectedIds.has(item.id) && styles.videoItemSelected,
                     isCompleted && styles.videoItemCompleted,
                   ]}
-                  onPress={() => !isTransferring && !isCompleted && onToggle(item.id)}
+                  onPress={() =>
+                    !isTransferring && !isCompleted && onToggle(item.id)
+                  }
                   disabled={isTransferring || isCompleted}
                 >
                   <View style={styles.checkbox}>
                     {isCompleted ? (
-                      <Text style={styles.completedMark}>✓</Text>
+                      <Check size={14} color={colors.success} strokeWidth={3} />
                     ) : selectedIds.has(item.id) ? (
-                      <Text style={styles.checkmark}>✓</Text>
+                      <Check size={14} color={colors.primary} strokeWidth={3} />
                     ) : null}
                   </View>
                   <View style={styles.videoInfo}>
@@ -100,8 +118,8 @@ export function PeerVideoList({
                           {transfer.status === "pending"
                             ? "Waiting..."
                             : transfer.status === "failed"
-                            ? "Failed"
-                            : `${transfer.progress}%`}
+                              ? "Failed"
+                              : `${transfer.progress}%`}
                         </Text>
                       </View>
                     )}
@@ -112,9 +130,7 @@ export function PeerVideoList({
           />
 
           <View style={styles.footer}>
-            <Text style={styles.selectedCount}>
-              {selectedIds.size} selected
-            </Text>
+            <Text style={styles.selectedCount}>{selectedIds.size} selected</Text>
             <Pressable
               style={[
                 styles.downloadButton,
@@ -125,7 +141,7 @@ export function PeerVideoList({
               disabled={selectedIds.size === 0 || hasActiveTransfers}
             >
               {hasActiveTransfers ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.foreground} size="small" />
               ) : (
                 <Text style={styles.downloadButtonText}>Download Selected</Text>
               )}
@@ -150,122 +166,115 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: spacing.md,
+    gap: spacing.sm + 4,
   },
   backButton: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: 4,
   },
   backText: {
-    color: "#e94560",
-    fontSize: 16,
-    fontWeight: "500",
+    color: colors.primary,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
   },
   peerName: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: 12,
+    gap: spacing.sm + 4,
   },
   loadingText: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 32,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    paddingHorizontal: spacing.xl,
   },
   emptyText: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
     textAlign: "center",
+    marginTop: spacing.md,
   },
   list: {
     flex: 1,
   },
   videoItem: {
     flexDirection: "row",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.card,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.sm,
     alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   videoItemSelected: {
     borderWidth: 2,
-    borderColor: "#e94560",
+    borderColor: colors.primary,
   },
   videoItemCompleted: {
     opacity: 0.6,
     borderWidth: 2,
-    borderColor: "#4ade80",
+    borderColor: colors.success,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: "#444",
-    marginRight: 12,
+    borderColor: colors.border,
+    marginRight: spacing.sm + 4,
     alignItems: "center",
     justifyContent: "center",
-  },
-  checkmark: {
-    color: "#e94560",
-    fontWeight: "bold",
-  },
-  completedMark: {
-    color: "#4ade80",
-    fontWeight: "bold",
   },
   videoInfo: {
     flex: 1,
   },
   videoTitle: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.medium,
     marginBottom: 4,
   },
   videoChannel: {
-    color: "#a0a0a0",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
     marginBottom: 4,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,
   },
   videoDuration: {
-    color: "#666",
+    color: colors.textTertiary,
     fontSize: 11,
   },
   transcriptBadge: {
-    color: "#4ade80",
+    color: colors.success,
     fontSize: 10,
-    backgroundColor: "#1a2e1a",
+    backgroundColor: `${colors.success}20`,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radius.sm,
   },
   progressContainer: {
     height: 18,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    borderRadius: 4,
-    marginTop: 8,
+    backgroundColor: colors.overlay,
+    borderRadius: radius.sm,
+    marginTop: spacing.sm,
     overflow: "hidden",
     justifyContent: "center",
   },
@@ -274,12 +283,12 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "#e94560",
+    backgroundColor: colors.primary,
   },
   progressText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
+    color: colors.foreground,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
     textAlign: "center",
     zIndex: 1,
   },
@@ -287,18 +296,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 12,
+    paddingTop: spacing.sm + 4,
     borderTopWidth: 1,
-    borderTopColor: "#1a1a2e",
+    borderTopColor: colors.card,
   },
   selectedCount: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
   },
   downloadButton: {
-    backgroundColor: "#e94560",
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: spacing.sm + 4,
     borderRadius: 10,
     minWidth: 140,
     alignItems: "center",
@@ -307,7 +316,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   downloadButtonText: {
-    color: "#fff",
-    fontWeight: "600",
+    color: colors.primaryForeground,
+    fontWeight: fontWeight.semibold,
   },
 });

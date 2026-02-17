@@ -1,12 +1,25 @@
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import type { RemoteSubscription } from "../../types";
+import {
+  colors,
+  radius,
+  spacing,
+  fontSize,
+  fontWeight,
+  getPlaceholderColor,
+} from "../../theme";
 
 interface SubscriptionCardProps {
   subscription: RemoteSubscription;
   onPress: () => void;
 }
 
-export function SubscriptionCard({ subscription, onPress }: SubscriptionCardProps) {
+export function SubscriptionCard({
+  subscription,
+  onPress,
+}: SubscriptionCardProps) {
+  const placeholderColor = getPlaceholderColor(subscription.channelTitle);
+
   return (
     <Pressable style={styles.container} onPress={onPress}>
       <View style={styles.thumbnailContainer}>
@@ -17,7 +30,13 @@ export function SubscriptionCard({ subscription, onPress }: SubscriptionCardProp
             resizeMode="cover"
           />
         ) : (
-          <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
+          <View
+            style={[
+              styles.thumbnail,
+              styles.thumbnailPlaceholder,
+              { backgroundColor: placeholderColor },
+            ]}
+          >
             <Text style={styles.placeholderText}>
               {subscription.channelTitle.charAt(0).toUpperCase()}
             </Text>
@@ -29,7 +48,8 @@ export function SubscriptionCard({ subscription, onPress }: SubscriptionCardProp
           {subscription.channelTitle}
         </Text>
         <Text style={styles.subtitle}>
-          {subscription.videoCount} video{subscription.videoCount !== 1 ? "s" : ""}
+          {subscription.videoCount} video
+          {subscription.videoCount !== 1 ? "s" : ""}
         </Text>
       </View>
     </Pressable>
@@ -39,19 +59,21 @@ export function SubscriptionCard({ subscription, onPress }: SubscriptionCardProp
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    padding: 12,
-    backgroundColor: "#1f1f3a",
-    borderRadius: 12,
-    marginHorizontal: 16,
+    padding: spacing.sm + 4,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    marginHorizontal: spacing.md,
     marginVertical: 6,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   thumbnailContainer: {
     width: 56,
     height: 56,
     borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: "#2a2a4e",
+    backgroundColor: colors.muted,
   },
   thumbnail: {
     width: "100%",
@@ -60,25 +82,24 @@ const styles = StyleSheet.create({
   thumbnailPlaceholder: {
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#9333ea",
   },
   placeholderText: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "bold",
+    color: colors.foreground,
+    fontSize: fontSize.xl + 4,
+    fontWeight: fontWeight.bold,
   },
   info: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: spacing.sm + 4,
   },
   title: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
     marginBottom: 4,
   },
   subtitle: {
-    color: "#888",
+    color: colors.mutedForeground,
     fontSize: 13,
   },
 });

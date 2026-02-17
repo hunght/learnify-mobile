@@ -1,5 +1,14 @@
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import type { DiscoveredPeer } from "../../types";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Smartphone, Radio, ChevronRight } from "../../theme/icons";
 
 interface PeerListProps {
   peers: DiscoveredPeer[];
@@ -20,7 +29,7 @@ export function PeerList({
         <Text style={styles.title}>Nearby Devices</Text>
         {isScanning && (
           <View style={styles.scanningRow}>
-            <ActivityIndicator color="#e94560" size="small" />
+            <ActivityIndicator color={colors.primary} size="small" />
             <Text style={styles.scanningText}>Scanning...</Text>
           </View>
         )}
@@ -28,7 +37,7 @@ export function PeerList({
 
       {peers.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📡</Text>
+          <Radio size={48} color={colors.mutedForeground} />
           <Text style={styles.emptyText}>
             {isScanning
               ? "Looking for nearby devices sharing videos..."
@@ -49,7 +58,7 @@ export function PeerList({
               onPress={() => onSelectPeer(item)}
             >
               <View style={styles.peerIcon}>
-                <Text style={styles.peerIconText}>📱</Text>
+                <Smartphone size={24} color={colors.mutedForeground} />
               </View>
               <View style={styles.peerInfo}>
                 <Text style={styles.peerName}>{item.name}</Text>
@@ -59,7 +68,7 @@ export function PeerList({
                 </Text>
               </View>
               <View style={styles.arrow}>
-                <Text style={styles.arrowText}>›</Text>
+                <ChevronRight size={24} color={colors.textTertiary} />
               </View>
             </Pressable>
           )}
@@ -77,12 +86,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: spacing.sm + 4,
   },
   title: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   scanningRow: {
     flexDirection: "row",
@@ -90,72 +99,63 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   scanningText: {
-    color: "#e94560",
+    color: colors.primary,
     fontSize: 13,
   },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 32,
-    paddingVertical: 48,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing["2xl"],
   },
   emptyText: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
     textAlign: "center",
     lineHeight: 20,
+    marginTop: spacing.md,
   },
   list: {
     flex: 1,
   },
   peerItem: {
     flexDirection: "row",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.card,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.sm,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   peerItemSelected: {
     borderWidth: 2,
-    borderColor: "#e94560",
+    borderColor: colors.primary,
   },
   peerIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#2d2d44",
+    backgroundColor: colors.muted,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
-  },
-  peerIconText: {
-    fontSize: 24,
+    marginRight: spacing.sm + 4,
   },
   peerInfo: {
     flex: 1,
   },
   peerName: {
-    color: "#fff",
+    color: colors.foreground,
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: fontWeight.medium,
     marginBottom: 4,
   },
   peerMeta: {
-    color: "#a0a0a0",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
   },
   arrow: {
-    paddingLeft: 8,
-  },
-  arrowText: {
-    color: "#666",
-    fontSize: 24,
-    fontWeight: "300",
+    paddingLeft: spacing.sm,
   },
 });

@@ -14,6 +14,7 @@ import { useLibraryStore } from "../../stores/library";
 import { usePlaybackStore } from "../../stores/playback";
 import { useConnectionStore } from "../../stores/connection";
 import { api } from "../../services/api";
+import { getVideoLocalPath } from "../../services/downloader";
 import type { TranscriptSegment, Transcript } from "../../types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -55,10 +56,10 @@ export default function PlayerScreen() {
   const playlistVideo = playlistVideos.find((v) => v.id === id);
   const video = libraryVideo ?? playlistVideo;
 
-  // Determine video source URL
+  // Determine video source URL - resolve path dynamically to handle sandbox changes
+  const localVideoPath = id ? getVideoLocalPath(id) : null;
   const videoSourceUrl =
-    libraryVideo?.localPath ??
-    (streamServerUrl && id ? getStreamUrl(id) : null);
+    localVideoPath ?? (streamServerUrl && id ? getStreamUrl(id) : null);
 
   // Sync playlist index when video ID changes
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function PlayerScreen() {
 
   // Fetch transcript when streaming (not from local library)
   useEffect(() => {
-    if (!libraryVideo && id && (streamServerUrl || serverUrl)) {
+    if (!localVideoPath && id && (streamServerUrl || serverUrl)) {
       const url = streamServerUrl || serverUrl;
       if (!url) return;
 
@@ -93,7 +94,7 @@ export default function PlayerScreen() {
           setIsLoadingTranscript(false);
         });
     }
-  }, [id, libraryVideo, streamServerUrl, serverUrl]);
+  }, [id, localVideoPath, streamServerUrl, serverUrl]);
 
   const player = useVideoPlayer(videoSourceUrl || "", (player) => {
     player.loop = false;
@@ -294,7 +295,7 @@ export default function PlayerScreen() {
         </Text>
         <View style={styles.channelRow}>
           <Text style={styles.channel}>{video.channelTitle}</Text>
-          {!libraryVideo && (streamServerUrl || isStreaming) && (
+          {!localVideoPath && (streamServerUrl || isStreaming) && (
             <View style={styles.streamingBadge}>
               <Text style={styles.streamingBadgeText}>Streaming</Text>
             </View>

@@ -60,7 +60,7 @@ export default function SavedPlaylistScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={styles.header}>
         <Pressable style={styles.headerBackButton} onPress={() => router.back()}>

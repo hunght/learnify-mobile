@@ -77,14 +77,20 @@ export const useLibraryStore = create<LibraryStore>()(
 
     addVideo: (video) => {
       try {
+        const existing = videoRepo.getVideoById(video.id);
+        const localPath =
+          video.localPath ?? existing?.localPath ?? null;
+        const thumbnailUrl =
+          video.thumbnailUrl ?? existing?.thumbnailUrl ?? null;
+
         // Upsert to SQLite
         videoRepo.upsertVideo({
           id: video.id,
           title: video.title,
           channelTitle: video.channelTitle,
           duration: video.duration,
-          thumbnailUrl: video.thumbnailUrl ?? null,
-          localPath: video.localPath ?? null,
+          thumbnailUrl,
+          localPath,
         });
 
         // Add transcripts if provided

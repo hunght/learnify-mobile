@@ -1,5 +1,7 @@
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import type { Video } from "../../types";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
+import { Check } from "../../theme/icons";
 
 interface VideoShareListProps {
   videos: Video[];
@@ -46,7 +48,7 @@ export function VideoShareList({
           >
             <View style={styles.checkbox}>
               {selectedIds.has(item.id) && (
-                <Text style={styles.checkmark}>✓</Text>
+                <Check size={14} color={colors.primary} strokeWidth={3} />
               )}
             </View>
             <View style={styles.videoInfo}>
@@ -85,77 +87,75 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: spacing.sm + 4,
   },
   title: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   selectAllButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.sm + 4,
     paddingVertical: 6,
   },
   selectAllText: {
-    color: "#e94560",
-    fontSize: 14,
-    fontWeight: "500",
+    color: colors.primary,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.medium,
   },
   list: {
     flex: 1,
   },
   videoItem: {
     flexDirection: "row",
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.card,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    padding: spacing.sm + 4,
+    marginBottom: spacing.sm,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   videoItemSelected: {
     borderWidth: 2,
-    borderColor: "#e94560",
+    borderColor: colors.primary,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: "#444",
-    marginRight: 12,
+    borderColor: colors.border,
+    marginRight: spacing.sm + 4,
     alignItems: "center",
     justifyContent: "center",
-  },
-  checkmark: {
-    color: "#e94560",
-    fontWeight: "bold",
   },
   videoInfo: {
     flex: 1,
   },
   videoTitle: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "500",
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.medium,
     marginBottom: 4,
   },
   videoChannel: {
-    color: "#a0a0a0",
-    fontSize: 12,
+    color: colors.mutedForeground,
+    fontSize: fontSize.sm,
     marginBottom: 2,
   },
   videoDuration: {
-    color: "#666",
+    color: colors.textTertiary,
     fontSize: 11,
   },
   footer: {
-    paddingTop: 12,
+    paddingTop: spacing.sm + 4,
     borderTopWidth: 1,
-    borderTopColor: "#1a1a2e",
+    borderTopColor: colors.card,
   },
   selectedCount: {
-    color: "#a0a0a0",
-    fontSize: 14,
+    color: colors.mutedForeground,
+    fontSize: fontSize.base,
     textAlign: "center",
   },
 });

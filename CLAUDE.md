@@ -69,6 +69,12 @@ The download system uses a queue-based architecture:
 - Queue persists across app restarts (downloading items reset to queued on hydration)
 - Downloads fetch all available transcripts (multiple languages) from the desktop server
 
+**Important: Video Path Resolution**
+- iOS sandbox container paths change when the app is reinstalled or updated
+- Never use stored `localPath` directly for playback - use `getVideoLocalPath(videoId)` from `services/downloader.ts`
+- Use `videoExistsLocally(videoId)` to check if a video file exists locally
+- The `localPath` in the database is kept for backwards compatibility but should not be trusted
+
 ### Database (SQLite + Drizzle)
 
 The app uses SQLite via expo-sqlite with Drizzle ORM for local data persistence:
@@ -82,6 +88,53 @@ The app uses SQLite via expo-sqlite with Drizzle ORM for local data persistence:
 
 Migrations run automatically on app start via `useDatabase` hook.
 
+## Theme System
+
+The mobile app uses a centralized theme system that matches the electron desktop app's dark mode styling.
+
+### Theme Files (`theme/`)
+
+- **`colors.ts`**: All color definitions matching the electron app's dark mode palette
+  - Core: `background`, `card`, `muted`, `foreground`, `mutedForeground`
+  - Brand: `primary` (#60A5FA blue), `accent` (#12D594 green)
+  - Semantic: `success`, `warning`, `destructive`, `pending`
+  - Helpers: `spacing`, `radius`, `fontSize`, `fontWeight`, `getPlaceholderColor()`
+- **`icons.ts`**: Centralized icon exports from `lucide-react-native` (matches desktop's `lucide-react`)
+- **`index.ts`**: Barrel export for all theme utilities
+
+### Usage
+
+```typescript
+import { colors, spacing, radius, fontSize, fontWeight } from "../theme";
+import { Check, Play, ArrowLeft } from "../theme/icons";
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: colors.background,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  title: {
+    color: colors.foreground,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+  },
+});
+```
+
+### Key Colors
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `background` | #0A0F1A | Main app background |
+| `card` | #151B28 | Card/surface backgrounds |
+| `foreground` | #F8FAFC | Primary text |
+| `mutedForeground` | #ADB5C4 | Secondary text |
+| `primary` | #60A5FA | Primary actions, links |
+| `success` | #12D594 | Success states, completed |
+| `destructive` | #F87171 | Errors, delete actions |
+| `border` | #323B4E | Borders, dividers |
+
 ## Tech Stack
 
 - Expo SDK 55 with New Architecture enabled
@@ -92,3 +145,5 @@ Migrations run automatically on app start via `useDatabase` hook.
 - expo-video for playback
 - expo-file-system (SDK 54+ Paths API)
 - react-native-zeroconf for mDNS discovery
+- lucide-react-native for icons (matches desktop's lucide-react)
+- react-native-svg (peer dependency for lucide icons)

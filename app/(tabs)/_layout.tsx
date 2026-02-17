@@ -1,34 +1,27 @@
 import { Tabs } from "expo-router";
-import { View, Text, StyleSheet } from "react-native";
-
-function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
-  return (
-    <View style={styles.iconContainer}>
-      <Text style={[styles.icon, focused && styles.iconFocused]}>{icon}</Text>
-    </View>
-  );
-}
+import { colors } from "../../theme";
+import { Home, Layers, Clock, Library, Settings } from "../../theme/icons";
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerStyle: {
-          backgroundColor: "#1a1a2e",
+          backgroundColor: colors.card,
         },
-        headerTintColor: "#fff",
+        headerTintColor: colors.foreground,
         headerTitleStyle: {
           fontWeight: "600",
         },
         tabBarStyle: {
-          backgroundColor: "#0d1b2a",
-          borderTopColor: "#1b2838",
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingTop: 8,
           height: 85,
         },
-        tabBarActiveTintColor: "#e94560",
-        tabBarInactiveTintColor: "#5c6b7a",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "500",
@@ -41,51 +34,47 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           headerTitle: "LearnifyTube",
-          tabBarIcon: ({ focused }) => <TabIcon icon="🏠" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Home size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="flashcards"
         options={{
           title: "Flashcards",
-          tabBarIcon: ({ focused }) => <TabIcon icon="🎴" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Layers size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="history"
         options={{
           title: "History",
-          tabBarIcon: ({ focused }) => <TabIcon icon="🕐" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Clock size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="lists"
         options={{
           title: "My Lists",
-          tabBarIcon: ({ focused }) => <TabIcon icon="📚" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Library size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => (
+            <Settings size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+          ),
         }}
       />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  iconContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  icon: {
-    fontSize: 22,
-    opacity: 0.6,
-  },
-  iconFocused: {
-    opacity: 1,
-  },
-});

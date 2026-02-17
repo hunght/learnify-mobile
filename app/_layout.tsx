@@ -6,9 +6,42 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useDownloadProcessor } from "../hooks/useDownloadProcessor";
 import { useDatabase } from "../hooks/useDatabase";
 import { useLibraryStore } from "../stores/library";
+import { useNavigationLogger } from "../hooks/useNavigationLogger";
+import { usePresencePublisher } from "../hooks/usePresencePublisher";
+import { colors } from "../theme";
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://6228136d91b7bf22eacc61f6d89044c3@o1116636.ingest.us.sentry.io/4510819520675840',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 function DownloadProcessor() {
   useDownloadProcessor();
+  return null;
+}
+
+function NavigationLogger() {
+  useNavigationLogger();
+  return null;
+}
+
+function PresencePublisher() {
+  usePresencePublisher();
   return null;
 }
 
@@ -35,7 +68,7 @@ function DatabaseInitializer({ children }: { children: React.ReactNode }) {
   if (!isReady) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#e94560" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Initializing...</Text>
       </View>
     );
@@ -49,36 +82,38 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 16,
-    color: "#a0a0a0",
+    color: colors.mutedForeground,
     fontSize: 16,
   },
   errorText: {
-    color: "#e94560",
+    color: colors.destructive,
     fontSize: 18,
     fontWeight: "bold",
   },
   errorDetail: {
-    color: "#a0a0a0",
+    color: colors.mutedForeground,
     fontSize: 14,
     marginTop: 8,
   },
 });
 
-export default function RootLayout() {
+export default Sentry.wrap(function RootLayout() {
   return (
     <SafeAreaProvider>
       <DatabaseInitializer>
         <DownloadProcessor />
+        <NavigationLogger />
+        <PresencePublisher />
         <StatusBar style="light" />
         <Stack
           screenOptions={{
             headerShown: false,
             contentStyle: {
-              backgroundColor: "#16213e",
+              backgroundColor: colors.background,
             },
           }}
         >
@@ -97,9 +132,9 @@ export default function RootLayout() {
               headerShown: true,
               presentation: "modal",
               headerStyle: {
-                backgroundColor: "#1a1a2e",
+                backgroundColor: colors.card,
               },
-              headerTintColor: "#fff",
+              headerTintColor: colors.foreground,
             }}
           />
           <Stack.Screen
@@ -109,9 +144,9 @@ export default function RootLayout() {
               headerShown: true,
               presentation: "modal",
               headerStyle: {
-                backgroundColor: "#1a1a2e",
+                backgroundColor: colors.card,
               },
-              headerTintColor: "#fff",
+              headerTintColor: colors.foreground,
             }}
           />
           <Stack.Screen
@@ -121,13 +156,13 @@ export default function RootLayout() {
               headerShown: true,
               presentation: "modal",
               headerStyle: {
-                backgroundColor: "#1a1a2e",
+                backgroundColor: colors.card,
               },
-              headerTintColor: "#fff",
+              headerTintColor: colors.foreground,
             }}
           />
         </Stack>
       </DatabaseInitializer>
     </SafeAreaProvider>
   );
-}
+});

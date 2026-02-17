@@ -1,4 +1,11 @@
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
+import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
 interface ShareStatusProps {
   isSharing: boolean;
@@ -20,7 +27,7 @@ export function ShareStatus({
   return (
     <View style={styles.container}>
       <View style={styles.statusRow}>
-        <ActivityIndicator color="#4ade80" size="small" />
+        <ActivityIndicator color={colors.success} size="small" />
         <Text style={styles.statusText}>Sharing Active</Text>
       </View>
 
@@ -42,42 +49,42 @@ export function ShareStatus({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#1a2e1a",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: `${colors.success}15`,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     borderWidth: 1,
-    borderColor: "#2d4a2d",
+    borderColor: `${colors.success}40`,
   },
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   statusText: {
-    color: "#4ade80",
-    fontSize: 16,
-    fontWeight: "600",
+    color: colors.success,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   infoText: {
-    color: "#fff",
-    fontSize: 14,
-    marginBottom: 8,
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    marginBottom: spacing.sm,
   },
   helpText: {
-    color: "#a0a0a0",
+    color: colors.mutedForeground,
     fontSize: 13,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   stopButton: {
-    backgroundColor: "#dc2626",
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.destructive,
+    padding: spacing.sm + 4,
+    borderRadius: radius.md,
     alignItems: "center",
   },
   stopButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
+    color: colors.foreground,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
   },
 });
