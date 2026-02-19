@@ -42,8 +42,8 @@ npm run android
 
 Only one workflow is kept:
 1. `Build Release APK` (`.github/workflows/android-apk.yml`)
-2. Trigger: manual only (`workflow_dispatch`)
-3. No trigger on push, PR, merge, or tag
+2. Triggers: manual (`workflow_dispatch`) and tag push (`v*`)
+3. On tag push (`refs/tags/v*`), CI builds APK and publishes a GitHub Release with the APK attached
 
 ### Manual Build + Download
 
@@ -62,6 +62,15 @@ gh run download "$RUN_ID" -n learnify-mobile-release-apk -D ./dist-apk
 adb install -r ./dist-apk/*.apk
 ```
 
+### Tagged Release (Auto Publish)
+
+```bash
+# From a clean main branch, bump version + versionCode + commit + tag + push
+# CI auto-runs on the pushed tag and publishes:
+# https://github.com/hunght/learnify-mobile/releases
+npm run release:android
+```
+
 ### Automation Scripts
 
 ```bash
@@ -71,7 +80,19 @@ bash ./scripts/gh-android-apk.sh
 # Same flow on another ref and auto-install
 bash ./scripts/gh-android-apk.sh --ref main --install
 
-# Bump version + versionCode + commit + tag + push + trigger release APK workflow
+# Download latest successful release APK and install to running emulator
+npm run test:emulator:apk
+
+# If no emulator is running, script can auto-start one (first AVD by default)
+bash ./scripts/test-emulator-apk.sh
+
+# Use a specific run + emulator device id
+bash ./scripts/test-emulator-apk.sh --run-id 22101650905 --device emulator-5554
+
+# Choose which AVD to auto-start
+bash ./scripts/test-emulator-apk.sh --avd Pixel_8_API_35
+
+# Bump version + versionCode + commit + tag + push + wait for tag-triggered release workflow
 npm run release:android
 ```
 

@@ -2,6 +2,9 @@ name: Build Release APK
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -12,7 +15,7 @@ jobs:
     name: Build Android Release APK
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout
@@ -52,10 +55,40 @@ jobs:
           path: android/app/build/outputs/apk/release/*.apk
           retention-days: 14
 
+      - name: Prepare release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          mkdir -p dist-apk
+          APK_SOURCE="$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)"
+          RELEASE_APK="dist-apk/learnify-mobile-${TAG}.apk"
+          cp "$APK_SOURCE" "$RELEASE_APK"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "apk_path=${RELEASE_APK}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: Learnify Mobile ${{ steps.release_meta.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.release_meta.outputs.apk_path }}
+          fail_on_unmatched_files: true
+
       - name: Build summary
         run: |
           echo "### Android release APK build complete" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Event: \`${GITHUB_EVENT_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${GITHUB_REF}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Variant: \`release\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Artifact: \`learnify-mobile-release-apk\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Download from this run's Artifacts section." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "- Release: [${TAG}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Release: not published (run is not on a tag)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- Download artifact from this run's Artifacts section." >> "$GITHUB_STEP_SUMMARY"

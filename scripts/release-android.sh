@@ -25,7 +25,7 @@ Options:
   --bump <patch|minor|major>   Semver bump type (default: patch)
   --version <x.y.z>            Explicit version (overrides --bump)
   --remote <name>              Git remote to push (default: origin)
-  --workflow <name>            Workflow name to trigger/watch (default: Build Release APK)
+  --workflow <name>            Workflow name to watch (default: Build Release APK)
   --no-push                    Do not push commit/tag
   --no-watch                   Do not wait for GitHub Actions release run
   --help                       Show this help
@@ -230,19 +230,16 @@ if [[ "$WATCH_RUN" == "true" ]]; then
   log "Ensuring workflow exists: ${WORKFLOW_NAME}"
   gh workflow view "$WORKFLOW_NAME" >/dev/null
 
-  log "Triggering workflow '${WORKFLOW_NAME}' on tag ${TAG}"
-  gh workflow run "$WORKFLOW_NAME" --ref "$TAG"
-
   HEAD_SHA="$(git rev-parse HEAD)"
   RUN_ID=""
+  log "Waiting for '${WORKFLOW_NAME}' run triggered by tag push (${TAG})"
 
   for ((i=1; i<=MAX_POLLS; i++)); do
     RUN_ID="$(gh run list \
       --workflow "$WORKFLOW_NAME" \
-      --event workflow_dispatch \
-      --limit 20 \
-      --json databaseId,headSha \
-      -q "map(select(.headSha == \"${HEAD_SHA}\"))[0].databaseId")"
+      --limit 30 \
+      --json databaseId,headSha,event \
+      -q "map(select(.headSha == \"${HEAD_SHA}\" and .event == \"push\"))[0].databaseId")"
 
     if [[ -n "$RUN_ID" && "$RUN_ID" != "null" ]]; then
       break
@@ -255,7 +252,7 @@ if [[ "$WATCH_RUN" == "true" ]]; then
     log "Watching release workflow run ${RUN_ID}"
     gh run watch "$RUN_ID" --exit-status
   else
-    log "Could not find workflow run for ${TAG}; check Actions tab manually."
+    log "Could not find release workflow run for ${TAG}; check Actions tab manually."
   fi
 fi
 
