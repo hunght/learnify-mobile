@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db, savedPlaylists, savedPlaylistItems, videos } from "../index";
+import { getDb, savedPlaylists, savedPlaylistItems, videos } from "../index";
 import type {
   SavedPlaylist,
   NewSavedPlaylist,
@@ -30,12 +30,12 @@ export interface SavedPlaylistWithItems extends SavedPlaylist {
 
 // Get all saved playlists
 export function getAllSavedPlaylists(): SavedPlaylist[] {
-  return db.select().from(savedPlaylists).all();
+  return getDb().select().from(savedPlaylists).all();
 }
 
 // Get saved playlist by ID
 export function getSavedPlaylistById(id: string): SavedPlaylist | undefined {
-  return db.select().from(savedPlaylists).where(eq(savedPlaylists.id, id)).get();
+  return getDb().select().from(savedPlaylists).where(eq(savedPlaylists.id, id)).get();
 }
 
 // Get saved playlist with all items and download status
@@ -45,7 +45,7 @@ export function getSavedPlaylistWithItems(
   const playlist = getSavedPlaylistById(id);
   if (!playlist) return undefined;
 
-  const items = db
+  const items = getDb()
     .select()
     .from(savedPlaylistItems)
     .where(eq(savedPlaylistItems.playlistId, id))
@@ -54,7 +54,7 @@ export function getSavedPlaylistWithItems(
 
   // Check which videos are downloaded locally
   const itemsWithStatus = items.map((item) => {
-    const video = db
+    const video = getDb()
       .select()
       .from(videos)
       .where(eq(videos.id, item.videoId))
@@ -83,7 +83,7 @@ export function getAllSavedPlaylistsWithProgress(): Array<
   const playlists = getAllSavedPlaylists();
 
   return playlists.map((playlist) => {
-    const items = db
+    const items = getDb()
       .select()
       .from(savedPlaylistItems)
       .where(eq(savedPlaylistItems.playlistId, playlist.id))
@@ -91,7 +91,7 @@ export function getAllSavedPlaylistsWithProgress(): Array<
 
     let downloadedCount = 0;
     for (const item of items) {
-      const video = db
+      const video = getDb()
         .select()
         .from(videos)
         .where(eq(videos.id, item.videoId))
@@ -125,7 +125,7 @@ export function savePlaylist(
 
   if (existing) {
     // Update existing playlist
-    db.update(savedPlaylists)
+    getDb().update(savedPlaylists)
       .set({
         title,
         thumbnailUrl,
@@ -136,12 +136,12 @@ export function savePlaylist(
       .run();
 
     // Delete old items and insert new ones
-    db.delete(savedPlaylistItems)
+    getDb().delete(savedPlaylistItems)
       .where(eq(savedPlaylistItems.playlistId, playlistId))
       .run();
   } else {
     // Insert new playlist
-    db.insert(savedPlaylists)
+    getDb().insert(savedPlaylists)
       .values({
         id: playlistId,
         title,
@@ -157,7 +157,7 @@ export function savePlaylist(
 
   // Insert playlist items
   videoInfos.forEach((video, index) => {
-    db.insert(savedPlaylistItems)
+    getDb().insert(savedPlaylistItems)
       .values({
         id: generateId(),
         playlistId,
@@ -177,7 +177,7 @@ export function savePlaylist(
 
 // Delete a saved playlist
 export function deleteSavedPlaylist(id: string) {
-  db.delete(savedPlaylists).where(eq(savedPlaylists.id, id)).run();
+  getDb().delete(savedPlaylists).where(eq(savedPlaylists.id, id)).run();
 }
 
 // Check if a playlist is saved
@@ -188,7 +188,7 @@ export function isPlaylistSaved(id: string): boolean {
 
 // Get playlist items for a saved playlist
 export function getPlaylistItems(playlistId: string): SavedPlaylistItem[] {
-  return db
+  return getDb()
     .select()
     .from(savedPlaylistItems)
     .where(eq(savedPlaylistItems.playlistId, playlistId))

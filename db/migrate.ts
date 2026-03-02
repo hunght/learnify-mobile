@@ -1,6 +1,4 @@
-import { openDatabaseSync } from "expo-sqlite";
-
-const DATABASE_NAME = "learnify.db";
+import { getExpoDb } from "./index";
 
 // Migration SQL statements
 const MIGRATIONS = [
@@ -164,7 +162,7 @@ const MIGRATIONS = [
 ];
 
 export async function runMigrations() {
-  const db = openDatabaseSync(DATABASE_NAME);
+  const db = getExpoDb();
 
   console.log("[DB] Running migrations...");
 
@@ -185,7 +183,7 @@ export async function runMigrations() {
 }
 
 export function getSchemaVersion(): number {
-  const db = openDatabaseSync(DATABASE_NAME);
+  const db = getExpoDb();
   try {
     const result = db.getFirstSync<{ version: number }>(
       "SELECT version FROM schema_version LIMIT 1"

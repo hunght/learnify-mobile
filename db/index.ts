@@ -1,14 +1,34 @@
 import { drizzle } from "drizzle-orm/expo-sqlite";
-import { openDatabaseSync } from "expo-sqlite";
+import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
 import * as schema from "./schema";
 
-const DATABASE_NAME = "learnify.db";
+export const DATABASE_NAME = "learnify.db";
 
-// Open the database
-const expoDb = openDatabaseSync(DATABASE_NAME);
+let expoDb: SQLiteDatabase | null = null;
 
-// Create drizzle instance
-export const db = drizzle(expoDb, { schema });
+function createDb() {
+  return drizzle(getExpoDb(), { schema });
+}
+
+type DrizzleDb = ReturnType<typeof createDb>;
+let drizzleDb: DrizzleDb | null = null;
+
+export function getExpoDb(): SQLiteDatabase {
+  if (!expoDb) {
+    // Delay opening until runtime init to avoid Android startup races in native DB handles.
+    expoDb = openDatabaseSync(DATABASE_NAME);
+  }
+
+  return expoDb;
+}
+
+export function getDb(): DrizzleDb {
+  if (!drizzleDb) {
+    drizzleDb = createDb();
+  }
+
+  return drizzleDb;
+}
 
 // Export schema for convenience
 export * from "./schema";

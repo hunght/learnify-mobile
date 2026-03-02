@@ -18,6 +18,52 @@ import { useDownloadStore } from "../stores/downloads";
 import { startScanning, stopScanning } from "../services/p2p/discovery";
 import type { RemoteVideo, DiscoveredPeer } from "../types";
 
+const DEFAULT_SYNC_PORT = 53318;
+const LEGACY_SYNC_PORT = 8384;
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  return String(error);
+}
+
+function buildManualConnectUrls(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const withScheme = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`;
+
+  try {
+    const parsed = new URL(withScheme);
+    const protocol = parsed.protocol === "https:" ? "https:" : "http:";
+
+    if (parsed.port) {
+      return [`${protocol}//${parsed.hostname}:${parsed.port}`];
+    }
+
+    const urls = [
+      `${protocol}//${parsed.hostname}:${DEFAULT_SYNC_PORT}`,
+      `${protocol}//${parsed.hostname}:${LEGACY_SYNC_PORT}`,
+    ];
+    return Array.from(new Set(urls));
+  } catch {
+    if (trimmed.includes(":")) {
+      return [`http://${trimmed}`];
+    }
+
+    return [
+      `http://${trimmed}:${DEFAULT_SYNC_PORT}`,
+      `http://${trimmed}:${LEGACY_SYNC_PORT}`,
+    ];
+  }
+}
+
 export default function ConnectScreen() {
   const [ipAddress, setIpAddress] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -85,9 +131,10 @@ export default function ConnectScreen() {
         return;
       }
       console.error("[Connect] Connection failed:", error);
+      const reason = getErrorMessage(error);
       Alert.alert(
         "Connection Failed",
-        "Could not connect to the device. Please try again."
+        `Could not connect to the device.\n\n${reason}`
       );
     } finally {
       setIsConnecting(false);
@@ -100,25 +147,38 @@ export default function ConnectScreen() {
       return;
     }
 
-    const url = `http://${ipAddress.trim()}:53318`;
     setIsConnecting(true);
+    const candidateUrls = buildManualConnectUrls(ipAddress);
+    let lastError: unknown = null;
 
     try {
-      const info = await api.getInfo(url);
-      console.log("Connected to:", info.name);
+      for (const url of candidateUrls) {
+        try {
+          console.log("[Connect] Trying manual connection:", url);
+          const info = await api.getInfo(url);
+          console.log("[Connect] Connected to:", info.name, "via", url);
 
-      setServerUrl(url);
-      const videosResponse = await api.getVideos(url);
-      setRemoteVideos(videosResponse.videos);
-    } catch (error) {
-      // Ignore AbortError - user navigated away before connection completed
-      if (error instanceof Error && error.name === "AbortError") {
-        console.log("[Connect] Connection aborted (user navigated away)");
-        return;
+          setServerUrl(url);
+          const videosResponse = await api.getVideos(url);
+          setRemoteVideos(videosResponse.videos);
+          return;
+        } catch (error) {
+          // Ignore AbortError - user navigated away before connection completed
+          if (error instanceof Error && error.name === "AbortError") {
+            console.log("[Connect] Connection aborted (user navigated away)");
+            return;
+          }
+          lastError = error;
+          console.warn("[Connect] Manual connection attempt failed:", url, error);
+        }
       }
+
+      throw lastError ?? new Error("All manual connection attempts failed");
+    } catch (error) {
+      const reason = getErrorMessage(error);
       Alert.alert(
         "Connection Failed",
-        "Could not connect to desktop. Make sure:\n\n1. Desktop app is running\n2. Sync server is enabled\n3. Both devices are on the same WiFi"
+        `Could not connect to desktop.\n\nTried:\n${candidateUrls.join("\n")}\n\nLast error:\n${reason}\n\nCheck:\n1. Desktop app is running\n2. Sync server is enabled\n3. Both devices are on the same network\n4. If using emulator, try 10.0.2.2:PORT`
       );
     } finally {
       setIsConnecting(false);
@@ -239,11 +299,11 @@ export default function ConnectScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="192.168.1.100"
+                placeholder="192.168.1.100 or 192.168.1.100:53318"
                 placeholderTextColor="#666"
                 value={ipAddress}
                 onChangeText={setIpAddress}
-                keyboardType="numeric"
+                keyboardType="url"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
