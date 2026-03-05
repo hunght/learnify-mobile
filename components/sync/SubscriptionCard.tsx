@@ -1,5 +1,5 @@
 import { View, Text, Image, StyleSheet } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemoteSubscription } from "../../types";
 import {
   colors,

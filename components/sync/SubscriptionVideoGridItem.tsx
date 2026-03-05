@@ -1,5 +1,5 @@
 import { View, Text, Image, StyleSheet, ActivityIndicator } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemoteVideoWithStatus } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Film } from "../../theme/icons";

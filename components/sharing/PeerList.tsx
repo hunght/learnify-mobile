@@ -5,7 +5,7 @@ import {
   FlatList,
   ActivityIndicator,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { DiscoveredPeer } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Smartphone, Radio, ChevronRight } from "../../theme/icons";

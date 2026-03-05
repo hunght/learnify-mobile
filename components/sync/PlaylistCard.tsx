@@ -6,7 +6,7 @@ import { View,
   StyleSheet,
   Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemotePlaylist } from "../../types";
 import { api } from "../../services/api";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
@@ -29,7 +29,7 @@ export function PlaylistCard({
   onSavePress,
   hasTVPreferredFocus = false,
 }: PlaylistCardProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
   const [isFocused, setIsFocused] = useState(false);
   const itemCount = playlist.itemCount ?? 0;
   const [imageError, setImageError] = useState(false);

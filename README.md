@@ -1,6 +1,8 @@
-# LearnifyTube Mobile
+# LearnifyTube Mobile + TV
 
-Android companion app for LearnifyTube - sync and watch your downloaded YouTube videos offline.
+Android companion app for LearnifyTube with two fully separated UI surfaces in one codebase:
+- `mobile` surface for phones/tablets
+- `tv` surface for Android TV
 
 ## Features
 
@@ -23,8 +25,14 @@ Android companion app for LearnifyTube - sync and watch your downloaded YouTube 
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (auto surface by device type)
 npm start
+
+# Force mobile surface in dev
+npm run start:mobile
+
+# Force TV surface in dev
+npm run start:tv
 
 # Run on Android Emulator
 npm run android
@@ -162,19 +170,42 @@ cd android && ./gradlew assembleRelease
 # Output: android/app/build/outputs/apk/release/
 ```
 
+## Surface Architecture
+
+- Single adaptive build artifact
+- Route split by surface:
+  - `app/(mobile)` for mobile UI
+  - `app/(tv)` for TV UI
+- Runtime entrypoint `app/index.tsx` chooses surface (`tv` or `mobile`)
+- Shared non-UI logic in `core/`, `services/`, `stores/`, `db/`, `types/`
+
 ## Project Structure
 
 ```
-├── app/                    # Expo Router pages
-│   ├── _layout.tsx        # Root layout with navigation
-│   ├── index.tsx          # Library screen (home)
-│   ├── connect.tsx        # Desktop connection screen
-│   └── player/[id].tsx    # Video player with transcript
-├── components/            # Reusable UI components
+├── app/
+│   ├── _layout.tsx                 # Shared app providers + root stacks
+│   ├── index.tsx                   # Runtime surface redirect
+│   ├── (mobile)/                   # Mobile-only UI routes
+│   └── (tv)/                       # TV-only UI routes
+├── core/                           # Shared surface-agnostic contracts/hooks
+├── components/
+│   ├── tv/                         # TV-only design primitives
+│   └── ui/                         # Shared input/pressable wrappers
 ├── services/              # API client and file downloader
 ├── stores/                # Zustand state stores
 ├── types/                 # TypeScript type definitions
 └── assets/                # Images and icons
+```
+
+## Validation Scripts
+
+```bash
+# Type check + lint + UI boundary checks
+npm run smoke:mobile
+npm run smoke:tv
+
+# Surface boundary guard
+npm run check:ui-boundaries
 ```
 
 ## Tech Stack

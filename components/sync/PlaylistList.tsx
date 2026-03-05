@@ -30,7 +30,7 @@ export function PlaylistList({
   onSavePress,
   onRefresh,
 }: PlaylistListProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
 
   if (isLoading && playlists.length === 0) {
     return (

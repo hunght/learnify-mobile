@@ -9,11 +9,11 @@ import {
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLibraryStore } from "../../stores/library";
-import { VideoGridCard } from "../../components/VideoGridCard";
-import * as watchHistoryRepo from "../../db/repositories/watchHistory";
-import type { WatchHistoryItem } from "../../db/repositories/watchHistory";
-import { colors, spacing, fontSize, fontWeight } from "../../theme";
+import { useLibraryStore } from "../../../stores/library";
+import { VideoGridCard } from "../../../components/VideoGridCard";
+import * as watchHistoryRepo from "../../../db/repositories/watchHistory";
+import type { WatchHistoryItem } from "../../../db/repositories/watchHistory";
+import { colors, spacing, fontSize, fontWeight } from "../../../theme";
 
 function formatTimecode(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -38,7 +38,7 @@ function getResumeLabel(item: WatchHistoryItem): string {
 
 export default function HistoryScreen() {
   const videos = useLibraryStore((state) => state.videos);
-  const isTv = Platform.isTV;
+  const isTv = false;
   const [historyItems, setHistoryItems] = useState<WatchHistoryItem[]>([]);
 
   const loadHistory = useCallback(() => {

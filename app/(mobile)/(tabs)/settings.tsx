@@ -16,23 +16,23 @@ import {
   Platform,
   PermissionsAndroid,
 } from "react-native";
-import { TVTextInput } from "@/components/tv/TVTextInput";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVTextInput } from "@/components/ui/TVTextInput";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useSettingsStore, LANGUAGES } from "../../stores/settings";
-import { useConnectionStore } from "../../stores/connection";
-import { api } from "../../services/api";
-import { startScanning, stopScanning } from "../../services/p2p/discovery";
+import { useSettingsStore, LANGUAGES } from "../../../stores/settings";
+import { useConnectionStore } from "../../../stores/connection";
+import { api } from "../../../services/api";
+import { startScanning, stopScanning } from "../../../services/p2p/discovery";
 import {
   assertSyncCompatibility,
   SyncCompatibilityError,
-} from "../../services/sync-compatibility";
+} from "../../../services/sync-compatibility";
 import {
   checkForAndroidApkUpdate,
   getAndroidApkUpdateAvailability,
   type AndroidApkUpdateAvailability,
-} from "../../services/app-update";
-import type { DiscoveredPeer } from "../../types";
+} from "../../../services/app-update";
+import type { DiscoveredPeer } from "../../../types";
 
 const DEFAULT_SYNC_PORT = 53318;
 const LEGACY_SYNC_PORT = 8384;
@@ -194,7 +194,7 @@ export default function SettingsScreen() {
   const [scanAttempt, setScanAttempt] = useState(0);
   const [showManualInput, setShowManualInput] = useState(false);
   const [isManualInputFocused, setIsManualInputFocused] = useState(false);
-  const isTv = Platform.isTV;
+  const isTv = false;
   const discoveredCountRef = useRef(0);
 
   const selectedLang =

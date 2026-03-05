@@ -24,7 +24,7 @@ export function ChannelList({
   onChannelPress,
   onRefresh,
 }: ChannelListProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
 
   if (isLoading && channels.length === 0) {
     return (

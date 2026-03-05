@@ -127,50 +127,8 @@ export default function RootLayout() {
             },
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="player/[id]"
-            options={{
-              headerShown: false,
-              presentation: "fullScreenModal",
-            }}
-          />
-          <Stack.Screen
-            name="share"
-            options={{
-              title: "Share",
-              headerShown: false,
-              presentation: "modal",
-              headerStyle: {
-                backgroundColor: colors.card,
-              },
-              headerTintColor: colors.foreground,
-            }}
-          />
-          <Stack.Screen
-            name="connect"
-            options={{
-              title: "Sync Videos",
-              headerShown: false,
-              presentation: "modal",
-              headerStyle: {
-                backgroundColor: colors.card,
-              },
-              headerTintColor: colors.foreground,
-            }}
-          />
-          <Stack.Screen
-            name="sync"
-            options={{
-              title: "Browse Server",
-              headerShown: false,
-              presentation: "modal",
-              headerStyle: {
-                backgroundColor: colors.card,
-              },
-              headerTintColor: colors.foreground,
-            }}
-          />
+          <Stack.Screen name="(mobile)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tv)" options={{ headerShown: false }} />
         </Stack>
       </DatabaseInitializer>
     </SafeAreaProvider>

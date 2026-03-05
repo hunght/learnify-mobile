@@ -12,22 +12,22 @@ import {
   Image,
   Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { Link, useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLibraryStore } from "../../stores/library";
-import { useDownloadStore } from "../../stores/downloads";
-import { useConnectionStore } from "../../stores/connection";
-import { usePlaybackStore, type StreamingVideo } from "../../stores/playback";
-import { VideoCard } from "../../components/VideoCard";
+import { useLibraryStore } from "../../../stores/library";
+import { useDownloadStore } from "../../../stores/downloads";
+import { useConnectionStore } from "../../../stores/connection";
+import { usePlaybackStore, type StreamingVideo } from "../../../stores/playback";
+import { VideoCard } from "../../../components/VideoCard";
 import {
   getAllSavedPlaylistsWithProgress,
   getSavedPlaylistWithItems,
-} from "../../db/repositories/playlists";
-import * as watchHistoryRepo from "../../db/repositories/watchHistory";
-import { getVideoLocalPath } from "../../services/downloader";
-import { colors, spacing, radius, fontSize, fontWeight } from "../../theme";
+} from "../../../db/repositories/playlists";
+import * as watchHistoryRepo from "../../../db/repositories/watchHistory";
+import { getVideoLocalPath } from "../../../services/downloader";
+import { colors, spacing, radius, fontSize, fontWeight } from "../../../theme";
 
 type SavedPlaylistInfo = {
   id: string;
@@ -151,7 +151,7 @@ function SavedPlaylistCard({
 
 export default function ListsScreen() {
   const router = useRouter();
-  const isTv = Platform.isTV;
+  const isTv = false;
 
   const videos = useLibraryStore((state) => state.videos);
   const downloadQueue = useDownloadStore((state) => state.queue);
@@ -321,7 +321,7 @@ export default function ListsScreen() {
           <Text style={styles.emptyText}>
             Sync videos from your LearnifyTube desktop app
           </Text>
-          <Link href="/(tabs)/settings" asChild>
+          <Link href="/(mobile)/(tabs)/settings" asChild>
             <TVPressable style={styles.syncButton} focusable={isTv} hasTVPreferredFocus={isTv}>
               <Text style={styles.syncButtonText}>Sync Videos</Text>
             </TVPressable>

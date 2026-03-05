@@ -10,7 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { Link, type Href } from "expo-router";
 import type { Video } from "../types";
 import { useDownloadStore } from "../stores/downloads";
@@ -46,7 +46,7 @@ export function VideoCard({
   const download = useDownloadStore((state) =>
     state.queue.find((d) => d.videoId === video.id)
   );
-  const isTv = Platform.isTV;
+  const isTv = false;
   const [isFocused, setIsFocused] = useState(false);
 
   const isDownloaded = videoExistsLocally(video.id);

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemoteChannel } from "../../types";
 import {
   colors,
@@ -50,7 +50,7 @@ export function ChannelCard({
   onPress,
   hasTVPreferredFocus = false,
 }: ChannelCardProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
   const [isFocused, setIsFocused] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);

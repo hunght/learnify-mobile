@@ -4,7 +4,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
 interface ShareStatusProps {

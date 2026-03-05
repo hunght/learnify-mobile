@@ -1,0 +1,755 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Constants from "expo-constants";
+import {
+  ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useConnectionStore } from "../../stores/connection";
+import { api } from "../../services/api";
+import {
+  checkForAndroidApkUpdate,
+  getAndroidApkUpdateAvailability,
+  type AndroidApkUpdateAvailability,
+} from "../../services/app-update";
+import { startScanning, stopScanning } from "../../services/p2p/discovery";
+import {
+  assertSyncCompatibility,
+  SyncCompatibilityError,
+} from "../../services/sync-compatibility";
+import { TVFocusPressable } from "../../components/tv/TVFocusPressable";
+import type { DiscoveredPeer } from "../../types";
+
+const DEFAULT_SYNC_PORT = 53318;
+const LEGACY_SYNC_PORT = 8384;
+const AUTO_CONNECT_DELAY_SECONDS = 3;
+const AUTO_CONNECT_DELAY_MS = AUTO_CONNECT_DELAY_SECONDS * 1000;
+const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
+  "android.permission.NEARBY_WIFI_DEVICES";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  return String(error);
+}
+
+function buildManualConnectUrls(input: string): string[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+
+  try {
+    const parsed = new URL(withScheme);
+    const protocol = parsed.protocol === "https:" ? "https:" : "http:";
+
+    if (parsed.port) {
+      return [`${protocol}//${parsed.hostname}:${parsed.port}`];
+    }
+
+    return Array.from(
+      new Set([
+        `${protocol}//${parsed.hostname}:${DEFAULT_SYNC_PORT}`,
+        `${protocol}//${parsed.hostname}:${LEGACY_SYNC_PORT}`,
+      ])
+    );
+  } catch {
+    if (trimmed.includes(":")) return [`http://${trimmed}`];
+    return [
+      `http://${trimmed}:${DEFAULT_SYNC_PORT}`,
+      `http://${trimmed}:${LEGACY_SYNC_PORT}`,
+    ];
+  }
+}
+
+function normalizeDiscoveredHost(host: string): string {
+  const trimmed = host.trim().replace(/%.+$/, "");
+  if (trimmed.includes(":") && !trimmed.startsWith("[")) {
+    return `[${trimmed}]`;
+  }
+  return trimmed;
+}
+
+function hostPriority(host: string): number {
+  const bare = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(bare)) return 0;
+  if (bare.endsWith(".local")) return 1;
+  if (bare.includes(":")) return 2;
+  return 3;
+}
+
+function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
+  const hosts = (
+    device.hosts && device.hosts.length > 0 ? device.hosts : [device.host]
+  )
+    .map(normalizeDiscoveredHost)
+    .filter((host) => host.length > 0)
+    .sort((a, b) => hostPriority(a) - hostPriority(b));
+
+  if (hosts.length === 0) return [];
+
+  const ports = [device.port, DEFAULT_SYNC_PORT, LEGACY_SYNC_PORT].filter(
+    (value, index, arr): value is number =>
+      Number.isInteger(value) && value > 0 && arr.indexOf(value) === index
+  );
+
+  const urls: string[] = [];
+  for (const host of hosts) {
+    for (const port of ports) {
+      urls.push(`http://${host}:${port}`);
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
+function getPeerKey(peer: DiscoveredPeer): string {
+  return `${peer.name}|${peer.host}|${peer.port}`;
+}
+
+function getAndroidApiLevel(): number {
+  if (Platform.OS !== "android") return 0;
+  if (typeof Platform.Version === "number") return Platform.Version;
+  const parsed = Number.parseInt(String(Platform.Version), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function ensureDiscoveryPermissions(): Promise<boolean> {
+  if (Platform.OS !== "android") return true;
+
+  const apiLevel = getAndroidApiLevel();
+  if (apiLevel < 33) return true;
+
+  const permission =
+    ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
+      typeof PermissionsAndroid.check
+    >[0];
+
+  const alreadyGranted = await PermissionsAndroid.check(permission);
+  if (alreadyGranted) return true;
+
+  const result = await PermissionsAndroid.request(permission, {
+    title: "Allow Nearby Devices",
+    message:
+      "LearnifyTube needs Nearby devices permission to discover your desktop app on local Wi-Fi.",
+    buttonPositive: "Allow",
+    buttonNegative: "Not now",
+  });
+
+  return result === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+export default function TVSettingsScreen() {
+  const serverUrl = useConnectionStore((state) => state.serverUrl);
+  const serverName = useConnectionStore((state) => state.serverName);
+  const setServerUrl = useConnectionStore((state) => state.setServerUrl);
+  const setServerName = useConnectionStore((state) => state.setServerName);
+  const disconnect = useConnectionStore((state) => state.disconnect);
+  const isConnected = !!serverUrl;
+
+  const [input, setInput] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredPeer[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [scanAttempt, setScanAttempt] = useState(0);
+  const [autoConnectCountdown, setAutoConnectCountdown] = useState<number | null>(null);
+  const [autoConnectBlockedPeerKey, setAutoConnectBlockedPeerKey] = useState<string | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isLoadingUpdateAvailability, setIsLoadingUpdateAvailability] =
+    useState(false);
+  const [updateAvailability, setUpdateAvailability] =
+    useState<AndroidApkUpdateAvailability | null>(null);
+
+  const autoConnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const candidates = useMemo(() => buildManualConnectUrls(input), [input]);
+  const singleDiscoveredDevice = discoveredDevices.length === 1 ? discoveredDevices[0] : null;
+  const singleDiscoveredPeerKey = useMemo(
+    () => (singleDiscoveredDevice ? getPeerKey(singleDiscoveredDevice) : null),
+    [singleDiscoveredDevice]
+  );
+  const appVersion =
+    Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
+  const appBuild = Constants.nativeBuildVersion ?? "-";
+
+  const clearAutoConnectTimers = useCallback(() => {
+    if (autoConnectIntervalRef.current) {
+      clearInterval(autoConnectIntervalRef.current);
+      autoConnectIntervalRef.current = null;
+    }
+    if (autoConnectTimeoutRef.current) {
+      clearTimeout(autoConnectTimeoutRef.current);
+      autoConnectTimeoutRef.current = null;
+    }
+  }, []);
+
+  const connectWithCandidates = useCallback(
+    async (
+      candidateUrls: string[],
+      fallbackName: string,
+      options?: { fromAuto?: boolean }
+    ) => {
+      if (candidateUrls.length === 0) {
+        if (!options?.fromAuto) {
+          setConnectionError("No valid connection endpoint found.");
+        }
+        return false;
+      }
+
+      setIsConnecting(true);
+      setConnectionError(null);
+      let lastError: unknown = null;
+
+      try {
+        for (const baseUrl of candidateUrls) {
+          try {
+            const info = await api.getInfo(baseUrl);
+            assertSyncCompatibility(info);
+
+            setServerUrl(baseUrl);
+            setServerName(info.name ?? fallbackName);
+            setConnectionError(null);
+            return true;
+          } catch (error) {
+            if (error instanceof SyncCompatibilityError) {
+              setConnectionError(error.message);
+              return false;
+            }
+            lastError = error;
+          }
+        }
+
+        const reason = getErrorMessage(lastError ?? new Error("All connection attempts failed"));
+        setConnectionError(reason);
+        return false;
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [setServerName, setServerUrl]
+  );
+
+  const connectToDiscoveredDevice = useCallback(
+    async (device: DiscoveredPeer, options?: { fromAuto?: boolean }) => {
+      const candidateUrls = buildDiscoveredConnectUrls(device);
+      return connectWithCandidates(candidateUrls, device.name, options);
+    },
+    [connectWithCandidates]
+  );
+
+  const connectToManualInput = useCallback(async () => {
+    if (candidates.length === 0) {
+      setConnectionError("Enter desktop host or IP first.");
+      return;
+    }
+
+    await connectWithCandidates(candidates, "Desktop");
+  }, [candidates, connectWithCandidates]);
+
+  const triggerSmartReconnect = useCallback(() => {
+    disconnect();
+    setConnectionError(null);
+    setInput("");
+    setAutoConnectBlockedPeerKey(null);
+    setScanAttempt((prev) => prev + 1);
+  }, [disconnect]);
+
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    setConnectionError(null);
+    setAutoConnectBlockedPeerKey(null);
+  }, [disconnect]);
+
+  const handleRetryDiscovery = useCallback(() => {
+    setConnectionError(null);
+    setScanAttempt((prev) => prev + 1);
+  }, []);
+
+  const refreshUpdateAvailability = useCallback(async () => {
+    setIsLoadingUpdateAvailability(true);
+    try {
+      const availability = await getAndroidApkUpdateAvailability();
+      setUpdateAvailability(availability);
+    } finally {
+      setIsLoadingUpdateAvailability(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshUpdateAvailability();
+  }, [refreshUpdateAvailability]);
+
+  const handleUpdatePress = useCallback(async () => {
+    if (isCheckingUpdate) return;
+
+    setIsCheckingUpdate(true);
+    try {
+      await checkForAndroidApkUpdate({ manual: true });
+    } finally {
+      setIsCheckingUpdate(false);
+      void refreshUpdateAvailability();
+    }
+  }, [isCheckingUpdate, refreshUpdateAvailability]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const beginScanning = async () => {
+      setIsScanning(true);
+      setConnectionError(null);
+      setDiscoveredDevices([]);
+
+      try {
+        const granted = await ensureDiscoveryPermissions();
+        if (cancelled) return;
+
+        if (!granted) {
+          setConnectionError("Nearby devices permission is required for discovery.");
+          setIsScanning(false);
+          return;
+        }
+
+        startScanning({
+          onPeerFound: (peer) => {
+            if (cancelled) return;
+            setDiscoveredDevices((prev) => {
+              const existing = prev.find((item) => item.name === peer.name);
+              if (existing) {
+                return prev.map((item) => (item.name === peer.name ? peer : item));
+              }
+              return [...prev, peer].sort((a, b) => a.name.localeCompare(b.name));
+            });
+            setIsScanning(false);
+          },
+          onPeerLost: (name) => {
+            if (cancelled) return;
+            setDiscoveredDevices((prev) => prev.filter((item) => item.name !== name));
+          },
+          onError: (error) => {
+            if (cancelled) return;
+            setConnectionError(`Discovery error: ${getErrorMessage(error)}`);
+            setIsScanning(false);
+          },
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setConnectionError(`Discovery failed: ${getErrorMessage(error)}`);
+          setIsScanning(false);
+        }
+      }
+    };
+
+    void beginScanning();
+
+    return () => {
+      cancelled = true;
+      clearAutoConnectTimers();
+      stopScanning();
+      setIsScanning(false);
+    };
+  }, [clearAutoConnectTimers, scanAttempt]);
+
+  useEffect(() => {
+    if (!singleDiscoveredPeerKey) {
+      setAutoConnectBlockedPeerKey(null);
+      return;
+    }
+
+    if (
+      autoConnectBlockedPeerKey &&
+      autoConnectBlockedPeerKey !== singleDiscoveredPeerKey
+    ) {
+      setAutoConnectBlockedPeerKey(null);
+    }
+  }, [autoConnectBlockedPeerKey, singleDiscoveredPeerKey]);
+
+  useEffect(() => {
+    clearAutoConnectTimers();
+
+    const isManualTyping = input.trim().length > 0;
+    const canAutoConnect =
+      !isConnected &&
+      !!singleDiscoveredDevice &&
+      !isConnecting &&
+      !isManualTyping &&
+      autoConnectBlockedPeerKey !== singleDiscoveredPeerKey;
+
+    if (!canAutoConnect || !singleDiscoveredDevice || !singleDiscoveredPeerKey) {
+      setAutoConnectCountdown(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAutoConnectCountdown(AUTO_CONNECT_DELAY_SECONDS);
+
+    autoConnectIntervalRef.current = setInterval(() => {
+      setAutoConnectCountdown((prev) => {
+        if (prev === null) return null;
+        return prev > 1 ? prev - 1 : 1;
+      });
+    }, 1000);
+
+    autoConnectTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        if (cancelled) return;
+
+        clearAutoConnectTimers();
+        const connected = await connectToDiscoveredDevice(singleDiscoveredDevice, {
+          fromAuto: true,
+        });
+
+        if (!connected && !cancelled) {
+          setAutoConnectBlockedPeerKey(singleDiscoveredPeerKey);
+        }
+
+        if (!cancelled) {
+          setAutoConnectCountdown(null);
+        }
+      })();
+    }, AUTO_CONNECT_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearAutoConnectTimers();
+    };
+  }, [
+    autoConnectBlockedPeerKey,
+    clearAutoConnectTimers,
+    connectToDiscoveredDevice,
+    input,
+    isConnected,
+    isConnecting,
+    singleDiscoveredDevice,
+    singleDiscoveredPeerKey,
+  ]);
+
+  const handleCancelAutoConnect = useCallback(() => {
+    clearAutoConnectTimers();
+    setAutoConnectCountdown(null);
+    if (singleDiscoveredPeerKey) {
+      setAutoConnectBlockedPeerKey(singleDiscoveredPeerKey);
+    }
+  }, [clearAutoConnectTimers, singleDiscoveredPeerKey]);
+
+  const connectionLabel = isConnected
+    ? `Connected to ${serverName ?? serverUrl}`
+    : "Not connected to desktop";
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <View style={styles.topBar}>
+        <Text style={styles.title}>Settings</Text>
+        <TVFocusPressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backText}>Back</Text>
+        </TVFocusPressable>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Desktop Connection</Text>
+        <Text style={styles.statusText}>{connectionLabel}</Text>
+
+        {!isConnected ? (
+          <View style={styles.discoveryHint}>
+            {isScanning ? <ActivityIndicator size="small" color="#ffd93d" /> : null}
+            <Text style={styles.discoveryHintText}>
+              {discoveredDevices.length > 0
+                ? `${discoveredDevices.length} desktop${discoveredDevices.length > 1 ? "s" : ""} found nearby`
+                : "Searching nearby desktop app..."}
+            </Text>
+          </View>
+        ) : null}
+
+        {connectionError ? <Text style={styles.errorText}>{connectionError}</Text> : null}
+
+        {singleDiscoveredDevice && autoConnectCountdown !== null && !isConnected ? (
+          <View style={styles.autoConnectBanner}>
+            <Text style={styles.autoConnectText}>
+              Auto-connecting in {autoConnectCountdown}s
+            </Text>
+            <TVFocusPressable style={styles.cancelButton} onPress={handleCancelAutoConnect}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TVFocusPressable>
+          </View>
+        ) : null}
+
+        {discoveredDevices.length > 0 ? (
+          <View style={styles.deviceList}>
+            {discoveredDevices.map((device, index) => (
+              <TVFocusPressable
+                key={getPeerKey(device)}
+                style={styles.deviceButton}
+                hasTVPreferredFocus={index === 0}
+                onPress={() => {
+                  handleCancelAutoConnect();
+                  void connectToDiscoveredDevice(device);
+                }}
+                disabled={isConnecting}
+              >
+                <Text style={styles.deviceName}>{device.name}</Text>
+                <Text style={styles.deviceHost}>{device.host}:{device.port}</Text>
+              </TVFocusPressable>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.actionsRow}>
+          {isConnected ? (
+            <>
+              <TVFocusPressable style={styles.primaryAction} onPress={triggerSmartReconnect}>
+                <Text style={styles.actionText}>Smart Reconnect</Text>
+              </TVFocusPressable>
+              <TVFocusPressable style={styles.secondaryAction} onPress={handleDisconnect}>
+                <Text style={styles.actionText}>Disconnect</Text>
+              </TVFocusPressable>
+            </>
+          ) : (
+            <TVFocusPressable style={styles.primaryAction} onPress={handleRetryDiscovery}>
+              <Text style={styles.actionText}>Retry Discovery</Text>
+            </TVFocusPressable>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Manual Fallback</Text>
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          placeholder="192.168.1.5"
+          placeholderTextColor="#64748b"
+          style={styles.input}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <TVFocusPressable
+          style={styles.primaryAction}
+          onPress={() => void connectToManualInput()}
+          disabled={isConnecting}
+        >
+          <Text style={styles.actionText}>
+            {isConnecting ? "Connecting..." : "Connect Now"}
+          </Text>
+        </TVFocusPressable>
+
+        {candidates.length > 0 ? (
+          <Text style={styles.candidatesText}>{candidates[0]}</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>App</Text>
+        <Text style={styles.statusText}>
+          Version {appVersion} (build {appBuild})
+        </Text>
+
+        {isLoadingUpdateAvailability ? (
+          <View style={styles.discoveryHint}>
+            <ActivityIndicator size="small" color="#ffd93d" />
+            <Text style={styles.discoveryHintText}>Checking update status...</Text>
+          </View>
+        ) : null}
+
+        <TVFocusPressable
+          style={[styles.primaryAction, isCheckingUpdate && styles.actionDisabled]}
+          onPress={() => void handleUpdatePress()}
+          disabled={isCheckingUpdate}
+        >
+          <Text style={styles.actionText}>
+            {isCheckingUpdate
+              ? "Opening installer..."
+              : updateAvailability?.hasUpdate
+                ? "Download Update"
+                : "Check for Updates"}
+          </Text>
+        </TVFocusPressable>
+
+        {updateAvailability?.hasUpdate ? (
+          <Text style={styles.discoveryHintText}>
+            {updateAvailability.latestVersionLabel
+              ? `New version ${updateAvailability.latestVersionLabel} is available`
+              : "A new app version is available"}
+          </Text>
+        ) : null}
+
+        {!isLoadingUpdateAvailability &&
+        updateAvailability?.configured &&
+        !updateAvailability.hasUpdate ? (
+          <Text style={styles.candidatesText}>App is up to date</Text>
+        ) : null}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#132447",
+    paddingHorizontal: 36,
+    paddingBottom: 24,
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  title: {
+    color: "#fff4cc",
+    fontSize: 44,
+    fontWeight: "900",
+  },
+  backButton: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#ff8a00",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  backText: {
+    color: "#fffef2",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  section: {
+    marginTop: 14,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#8ec5ff",
+    backgroundColor: "#2d7ff9",
+    padding: 16,
+    gap: 10,
+  },
+  sectionTitle: {
+    color: "#fffef2",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  statusText: {
+    color: "#eaf5ff",
+    fontSize: 19,
+    fontWeight: "700",
+  },
+  discoveryHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  discoveryHintText: {
+    color: "#eaf5ff",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  errorText: {
+    color: "#ffe3e3",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  autoConnectBanner: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#ff8a00",
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  autoConnectText: {
+    color: "#fffef2",
+    fontSize: 18,
+    fontWeight: "900",
+    flex: 1,
+  },
+  cancelButton: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#ffe48f",
+    backgroundColor: "#ff6b6b",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  cancelButtonText: {
+    color: "#fffef2",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  deviceList: {
+    gap: 8,
+  },
+  deviceButton: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#40c4aa",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  deviceName: {
+    color: "#fffef2",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  deviceHost: {
+    color: "#e8fffa",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  actionsRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    gap: 10,
+  },
+  primaryAction: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#ff6b6b",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignSelf: "flex-start",
+  },
+  secondaryAction: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#ff8a00",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignSelf: "flex-start",
+  },
+  actionText: {
+    color: "#fffef2",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  actionDisabled: {
+    opacity: 0.6,
+  },
+  input: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#8ec5ff",
+    backgroundColor: "#132447",
+    color: "#fffef2",
+    fontSize: 22,
+    fontWeight: "800",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  candidatesText: {
+    color: "#dbeafe",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+});

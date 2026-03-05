@@ -6,26 +6,26 @@ import { View,
   Text,
   Alert,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLibraryStore } from "../stores/library";
-import { useSharingStore } from "../stores/sharing";
+import { useLibraryStore } from "../../stores/library";
+import { useSharingStore } from "../../stores/sharing";
 import {
   ModeSelector,
   VideoShareList,
   ShareStatus,
   PeerList,
   PeerVideoList,
-} from "../components/sharing";
+} from "../../components/sharing";
 import {
   publishService,
   unpublishService,
   startScanning,
   stopScanning,
-} from "../services/p2p/discovery";
-import { startServer, stopServer, DEFAULT_PORT } from "../services/p2p/server";
-import { getPeerVideos, downloadVideoFromPeer } from "../services/p2p/client";
-import type { DiscoveredPeer, PeerVideo } from "../types";
+} from "../../services/p2p/discovery";
+import { startServer, stopServer, DEFAULT_PORT } from "../../services/p2p/server";
+import { getPeerVideos, downloadVideoFromPeer } from "../../services/p2p/client";
+import type { DiscoveredPeer, PeerVideo } from "../../types";
 
 type ViewMode = "select" | "share" | "receive";
 

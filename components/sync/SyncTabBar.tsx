@@ -5,7 +5,7 @@ import { View,
   StyleSheet,
   Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import type { BrowseTab } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
@@ -15,7 +15,7 @@ interface SyncTabBarProps {
 }
 
 export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
   const [focusedTab, setFocusedTab] = useState<BrowseTab | null>(null);
 
   const tabs: { key: BrowseTab; label: string }[] = [

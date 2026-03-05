@@ -17,20 +17,20 @@ import {
   Platform,
   type ViewToken,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { useLocalSearchParams, router } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLibraryStore } from "../../stores/library";
-import { usePlaybackStore } from "../../stores/playback";
-import { useConnectionStore } from "../../stores/connection";
-import { useSettingsStore } from "../../stores/settings";
-import { api } from "../../services/api";
-import { getVideoLocalPath } from "../../services/downloader";
-import * as wordsRepo from "../../db/repositories/words";
-import * as watchHistoryRepo from "../../db/repositories/watchHistory";
-import * as videoRepo from "../../db/repositories/videos";
-import type { TranscriptSegment, Transcript, TranslateResult } from "../../types";
+import { useLibraryStore } from "../../../stores/library";
+import { usePlaybackStore } from "../../../stores/playback";
+import { useConnectionStore } from "../../../stores/connection";
+import { useSettingsStore } from "../../../stores/settings";
+import { api } from "../../../services/api";
+import { getVideoLocalPath } from "../../../services/downloader";
+import * as wordsRepo from "../../../db/repositories/words";
+import * as watchHistoryRepo from "../../../db/repositories/watchHistory";
+import * as videoRepo from "../../../db/repositories/videos";
+import type { TranscriptSegment, Transcript, TranslateResult } from "../../../types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = (SCREEN_WIDTH * 9) / 16;
@@ -80,7 +80,7 @@ function renderDescriptionWithTimestamps(
 }
 
 export default function PlayerScreen() {
-  const isTv = Platform.isTV;
+  const isTv = false;
   const { id, start } = useLocalSearchParams<{ id: string; start?: string }>();
   const libraryVideo = useLibraryStore((state) =>
     state.videos.find((v) => v.id === id)

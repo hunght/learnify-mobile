@@ -10,12 +10,12 @@ import {
   ScrollView,
   FlatList,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useConnectionStore } from "../../stores/connection";
-import { api } from "../../services/api";
-import * as wordsRepo from "../../db/repositories/words";
-import type { RemoteFlashcard, RemoteSavedWord } from "../../types";
+import { useConnectionStore } from "../../../stores/connection";
+import { api } from "../../../services/api";
+import * as wordsRepo from "../../../db/repositories/words";
+import type { RemoteFlashcard, RemoteSavedWord } from "../../../types";
 
 type StudyMode = "flashcards" | "words";
 

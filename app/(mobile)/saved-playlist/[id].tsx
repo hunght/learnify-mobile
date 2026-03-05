@@ -15,18 +15,18 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { VideoGridCard } from "../../components/VideoGridCard";
-import { getSavedPlaylistWithItems } from "../../db/repositories/playlists";
-import type { SavedPlaylistWithItems } from "../../db/repositories/playlists";
-import { api } from "../../services/api";
-import { downloadManager } from "../../services/downloadManager";
-import { getVideoLocalPath, videoExistsLocally } from "../../services/downloader";
-import { useConnectionStore } from "../../stores/connection";
-import { useDownloadStore } from "../../stores/downloads";
-import { useLibraryStore } from "../../stores/library";
-import { usePlaybackStore, type StreamingVideo } from "../../stores/playback";
+import { VideoGridCard } from "../../../components/VideoGridCard";
+import { getSavedPlaylistWithItems } from "../../../db/repositories/playlists";
+import type { SavedPlaylistWithItems } from "../../../db/repositories/playlists";
+import { api } from "../../../services/api";
+import { downloadManager } from "../../../services/downloadManager";
+import { getVideoLocalPath, videoExistsLocally } from "../../../services/downloader";
+import { useConnectionStore } from "../../../stores/connection";
+import { useDownloadStore } from "../../../stores/downloads";
+import { useLibraryStore } from "../../../stores/library";
+import { usePlaybackStore, type StreamingVideo } from "../../../stores/playback";
 
 type SavedPlaylistItem = SavedPlaylistWithItems["items"][number];
 type CardPendingState =
@@ -39,7 +39,7 @@ type CardPendingState =
 const PREPARE_CANCELLED_MESSAGE = "Download cancelled";
 
 export default function SavedPlaylistScreen() {
-  const isTv = Platform.isTV;
+  const isTv = false;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const serverUrl = useConnectionStore((state) => state.serverUrl);

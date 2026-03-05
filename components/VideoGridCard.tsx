@@ -8,7 +8,7 @@ import {
     ActivityIndicator,
     Platform,
 } from "react-native";
-import { TVPressable } from "@/components/tv/TVPressable";
+import { TVPressable } from "@/components/ui/TVPressable";
 import { colors, radius, spacing, fontSize, fontWeight } from "../theme";
 import { Film } from "../theme/icons";
 
@@ -54,7 +54,7 @@ export function VideoGridCard({
     hasTVPreferredFocus = false,
 }: VideoGridCardProps) {
     const isPending = pending.type !== "none" && pending.type !== "failed";
-    const isTv = Platform.isTV;
+    const isTv = false;
     const [isFocused, setIsFocused] = useState(false);
 
     return (

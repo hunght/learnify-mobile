@@ -24,7 +24,7 @@ export function MyListsList({
   onMyListPress,
   onRefresh,
 }: MyListsListProps) {
-  const isTv = Platform.isTV;
+  const isTv = false;
 
   if (isLoading && myLists.length === 0) {
     return (

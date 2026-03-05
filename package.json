@@ -4,7 +4,10 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "kill $(lsof -ti:8081) 2>/dev/null || true && expo start -c",
+    "start:mobile": "EXPO_PUBLIC_APP_SURFACE=mobile npm run start",
+    "start:tv": "EXPO_PUBLIC_APP_SURFACE=tv npm run start",
     "android": "expo run:android",
+    "android:tv": "EXPO_PUBLIC_APP_SURFACE=tv expo run:android",
     "web": "expo start --web",
     "prebuild": "expo prebuild --platform android",
     "build:android": "eas build --platform android",
@@ -13,6 +16,9 @@
     "ci:android:apk": "bash ./scripts/gh-android-apk.sh",
     "test:emulator:apk": "bash ./scripts/test-emulator-apk.sh",
     "release:android": "bash ./scripts/release-android.sh",
+    "check:ui-boundaries": "bash ./scripts/check-ui-boundaries.sh",
+    "smoke:mobile": "bash ./scripts/smoke-mobile.sh",
+    "smoke:tv": "bash ./scripts/smoke-tv.sh",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
     "knip": "knip",
@@ -48,6 +54,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
     "knip": "^5.83.0",
     "typescript": "~5.9.2"
   },
