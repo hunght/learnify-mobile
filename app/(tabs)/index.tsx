@@ -1,14 +1,17 @@
-import { useEffect, useCallback, useState } from "react";
+import {
+  useEffect,
+  useCallback,
+  useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  Pressable,
   ActivityIndicator,
   Alert,
   Platform,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLibraryStore } from "../../stores/library";
@@ -645,13 +648,13 @@ export default function HomeScreen() {
             Connect to your LearnifyTube desktop app to browse and sync videos
           </Text>
           <Link href="/(tabs)/settings" asChild>
-            <Pressable
+            <TVPressable
               style={styles.connectButton}
               focusable={isTv}
               hasTVPreferredFocus={isTv}
             >
               <Text style={styles.connectButtonText}>Go to Settings</Text>
-            </Pressable>
+            </TVPressable>
           </Link>
         </View>
       </SafeAreaView>
@@ -786,14 +789,14 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header with back button */}
         <View style={styles.videoHeader}>
-          <Pressable
+          <TVPressable
             style={styles.backButton}
             onPress={handleBackPress}
             focusable={isTv}
             hasTVPreferredFocus={isTv}
           >
             <ArrowLeft size={18} color={colors.foreground} />
-          </Pressable>
+          </TVPressable>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {currentTitle}
@@ -806,7 +809,7 @@ export default function HomeScreen() {
           </View>
           {/* Save Offline Button */}
           {!isChannelDetail && currentVideos.length > 0 && serverUrl && (
-            <Pressable
+            <TVPressable
               style={[
                 styles.saveOfflineButton,
                 isSaveActionDone && styles.saveOfflineButtonDisabled,
@@ -822,7 +825,7 @@ export default function HomeScreen() {
                     ? "Save Playlist"
                     : "Save All"}
               </Text>
-            </Pressable>
+            </TVPressable>
           )}
         </View>
 
@@ -844,7 +847,7 @@ export default function HomeScreen() {
         {!isChannelDetail && (syncableCount > 0 || playableCount > 0) && (
           <View style={styles.toolbar}>
             {syncableCount > 0 && (
-              <Pressable
+              <TVPressable
                 style={styles.toolbarButton}
                 onPress={
                   selectedVideoIds.size > 0 ? clearVideoSelection : selectAllVideos
@@ -856,10 +859,10 @@ export default function HomeScreen() {
                     ? `Deselect (${selectedVideoIds.size})`
                     : `Select All (${syncableCount})`}
                 </Text>
-              </Pressable>
+              </TVPressable>
             )}
             {selectedVideoIds.size > 0 && (
-              <Pressable
+              <TVPressable
                 style={styles.syncAllButton}
                 onPress={handleSyncSelected}
                 focusable={isTv}
@@ -868,10 +871,10 @@ export default function HomeScreen() {
                   Sync {selectedVideoIds.size} video
                   {selectedVideoIds.size !== 1 ? "s" : ""}
                 </Text>
-              </Pressable>
+              </TVPressable>
             )}
             {playableCount > 0 && selectedVideoIds.size === 0 && (
-              <Pressable
+              <TVPressable
                 style={styles.playAllButton}
                 onPress={handlePlayAll}
                 focusable={isTv}
@@ -880,7 +883,7 @@ export default function HomeScreen() {
                 <Text style={styles.playAllButtonText}>
                   Play All ({playableCount})
                 </Text>
-              </Pressable>
+              </TVPressable>
             )}
           </View>
         )}

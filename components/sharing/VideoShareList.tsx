@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
+import { View, Text, StyleSheet, FlatList } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { Video } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Check } from "../../theme/icons";
@@ -24,14 +25,14 @@ export function VideoShareList({
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Select Videos to Share</Text>
-        <Pressable
+        <TVPressable
           onPress={allSelected ? onDeselectAll : onSelectAll}
           style={styles.selectAllButton}
         >
           <Text style={styles.selectAllText}>
             {allSelected ? "Deselect All" : "Select All"}
           </Text>
-        </Pressable>
+        </TVPressable>
       </View>
 
       <FlatList
@@ -39,7 +40,7 @@ export function VideoShareList({
         keyExtractor={(item) => item.id}
         style={styles.list}
         renderItem={({ item }) => (
-          <Pressable
+          <TVPressable
             style={[
               styles.videoItem,
               selectedIds.has(item.id) && styles.videoItemSelected,
@@ -60,7 +61,7 @@ export function VideoShareList({
                 {formatDuration(item.duration)}
               </Text>
             </View>
-          </Pressable>
+          </TVPressable>
         )}
       />
 

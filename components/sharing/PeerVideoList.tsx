@@ -3,9 +3,9 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Pressable,
   ActivityIndicator,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type {
   PeerVideo,
   TransferProgress,
@@ -42,10 +42,10 @@ export function PeerVideoList({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backButton}>
+        <TVPressable onPress={onBack} style={styles.backButton}>
           <ChevronLeft size={20} color={colors.primary} />
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </TVPressable>
         <Text style={styles.peerName}>{peer.name}</Text>
       </View>
 
@@ -75,7 +75,7 @@ export function PeerVideoList({
               const isCompleted = transfer?.status === "completed";
 
               return (
-                <Pressable
+                <TVPressable
                   style={[
                     styles.videoItem,
                     selectedIds.has(item.id) && styles.videoItemSelected,
@@ -124,14 +124,14 @@ export function PeerVideoList({
                       </View>
                     )}
                   </View>
-                </Pressable>
+                </TVPressable>
               );
             }}
           />
 
           <View style={styles.footer}>
             <Text style={styles.selectedCount}>{selectedIds.size} selected</Text>
-            <Pressable
+            <TVPressable
               style={[
                 styles.downloadButton,
                 (selectedIds.size === 0 || hasActiveTransfers) &&
@@ -145,7 +145,7 @@ export function PeerVideoList({
               ) : (
                 <Text style={styles.downloadButtonText}>Download Selected</Text>
               )}
-            </Pressable>
+            </TVPressable>
           </View>
         </>
       )}

@@ -1,14 +1,15 @@
-import { useState } from "react";
+import {
+  useState } from "react";
 import {
   View,
   Text,
-  Pressable,
   Image,
   StyleSheet,
   Dimensions,
   ActivityIndicator,
   Platform,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { RemoteChannel } from "../../types";
 import {
   colors,
@@ -61,7 +62,7 @@ export function ChannelCard({
   const showPlaceholder = !hasValidUrl || imageError || !imageLoaded;
 
   return (
-    <Pressable
+    <TVPressable
       style={({ pressed }) => [
         styles.container,
         isTv && isFocused && styles.focused,
@@ -122,7 +123,7 @@ export function ChannelCard({
           )}
         </View>
       </View>
-    </Pressable>
+    </TVPressable>
   );
 }
 

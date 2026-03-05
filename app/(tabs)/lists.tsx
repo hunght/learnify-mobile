@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState } from "react";
 import {
   Alert,
   View,
   Text,
   StyleSheet,
-  Pressable,
   ScrollView,
   Image,
   Platform,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { Link, useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -80,7 +84,7 @@ function SavedPlaylistCard({
 
   return (
     <View style={[styles.playlistCardShell, isTv && styles.playlistCardShellTv]}>
-      <Pressable
+      <TVPressable
         style={[styles.playlistCard, isTv && isFocused && styles.playlistCardFocused]}
         onPress={onOpenPress}
         focusable={isTv}
@@ -122,10 +126,10 @@ function SavedPlaylistCard({
             {playlist.downloadedCount}/{playlist.totalCount}
           </Text>
         </View>
-      </Pressable>
+      </TVPressable>
 
       {onResumePress && resumeLabel ? (
-        <Pressable
+        <TVPressable
           style={[
             styles.playlistResumeButton,
             isTv && styles.playlistResumeButtonTv,
@@ -139,7 +143,7 @@ function SavedPlaylistCard({
           <Text style={styles.playlistResumeText} numberOfLines={1}>
             {resumeLabel}
           </Text>
-        </Pressable>
+        </TVPressable>
       ) : null}
     </View>
   );
@@ -318,9 +322,9 @@ export default function ListsScreen() {
             Sync videos from your LearnifyTube desktop app
           </Text>
           <Link href="/(tabs)/settings" asChild>
-            <Pressable style={styles.syncButton} focusable={isTv} hasTVPreferredFocus={isTv}>
+            <TVPressable style={styles.syncButton} focusable={isTv} hasTVPreferredFocus={isTv}>
               <Text style={styles.syncButtonText}>Sync Videos</Text>
-            </Pressable>
+            </TVPressable>
           </Link>
         </View>
       ) : (

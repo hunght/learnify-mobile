@@ -1,13 +1,16 @@
-import { useEffect, useState, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ActivityIndicator,
   ScrollView,
   FlatList,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../../stores/connection";
 import { api } from "../../services/api";
@@ -129,9 +132,9 @@ export default function FlashcardsScreen() {
           <Text style={styles.description}>
             Tap words in transcript while watching videos to save them.
           </Text>
-          <Pressable style={styles.retryButton} onPress={loadSavedWords}>
+          <TVPressable style={styles.retryButton} onPress={loadSavedWords}>
             <Text style={styles.retryButtonText}>Refresh</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       );
     }
@@ -145,7 +148,7 @@ export default function FlashcardsScreen() {
         ListHeaderComponent={
           <View style={styles.wordsHeaderRow}>
             <Text style={styles.wordsCountLabel}>{savedWords.length} words</Text>
-            <Pressable
+            <TVPressable
               style={styles.wordsRefreshButton}
               onPress={loadSavedWords}
               disabled={isLoadingWords}
@@ -153,7 +156,7 @@ export default function FlashcardsScreen() {
               <Text style={styles.wordsRefreshText}>
                 {isLoadingWords ? "Refreshing..." : "Refresh"}
               </Text>
-            </Pressable>
+            </TVPressable>
           </View>
         }
         renderItem={({ item }) => (
@@ -207,9 +210,9 @@ export default function FlashcardsScreen() {
         <View style={styles.centered}>
           <Text style={styles.icon}>⚠️</Text>
           <Text style={styles.description}>{error}</Text>
-          <Pressable style={styles.retryButton} onPress={loadCards}>
+          <TVPressable style={styles.retryButton} onPress={loadCards}>
             <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       );
     }
@@ -222,9 +225,9 @@ export default function FlashcardsScreen() {
           <Text style={styles.description}>
             You reviewed {reviewedCount} card{reviewedCount !== 1 ? "s" : ""}
           </Text>
-          <Pressable style={styles.retryButton} onPress={loadCards}>
+          <TVPressable style={styles.retryButton} onPress={loadCards}>
             <Text style={styles.retryButtonText}>Study Again</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       );
     }
@@ -237,9 +240,9 @@ export default function FlashcardsScreen() {
           <Text style={styles.description}>
             No flashcards due for review. Create more on your desktop app.
           </Text>
-          <Pressable style={styles.retryButton} onPress={loadCards}>
+          <TVPressable style={styles.retryButton} onPress={loadCards}>
             <Text style={styles.retryButtonText}>Refresh</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       );
     }
@@ -266,7 +269,7 @@ export default function FlashcardsScreen() {
           contentContainerStyle={styles.cardScrollContent}
           style={styles.cardScroll}
         >
-          <Pressable
+          <TVPressable
             style={styles.card}
             onPress={() => setIsFlipped((f) => !f)}
           >
@@ -287,45 +290,45 @@ export default function FlashcardsScreen() {
                 <Text style={styles.cardFrontPreview}>{card.frontContent}</Text>
               </>
             )}
-          </Pressable>
+          </TVPressable>
         </ScrollView>
 
         {isFlipped && (
           <View style={styles.gradeContainer}>
             <Text style={styles.gradeLabel}>How well did you know this?</Text>
             <View style={styles.gradeButtons}>
-              <Pressable
+              <TVPressable
                 style={[styles.gradeButton, styles.gradeAgain]}
                 onPress={() => handleGrade(1)}
                 disabled={isReviewing}
               >
                 <Text style={styles.gradeEmoji}>😣</Text>
                 <Text style={styles.gradeText}>Again</Text>
-              </Pressable>
-              <Pressable
+              </TVPressable>
+              <TVPressable
                 style={[styles.gradeButton, styles.gradeHard]}
                 onPress={() => handleGrade(3)}
                 disabled={isReviewing}
               >
                 <Text style={styles.gradeEmoji}>😐</Text>
                 <Text style={styles.gradeText}>Hard</Text>
-              </Pressable>
-              <Pressable
+              </TVPressable>
+              <TVPressable
                 style={[styles.gradeButton, styles.gradeGood]}
                 onPress={() => handleGrade(4)}
                 disabled={isReviewing}
               >
                 <Text style={styles.gradeEmoji}>😊</Text>
                 <Text style={styles.gradeText}>Good</Text>
-              </Pressable>
-              <Pressable
+              </TVPressable>
+              <TVPressable
                 style={[styles.gradeButton, styles.gradeEasy]}
                 onPress={() => handleGrade(5)}
                 disabled={isReviewing}
               >
                 <Text style={styles.gradeEmoji}>🤩</Text>
                 <Text style={styles.gradeText}>Easy</Text>
-              </Pressable>
+              </TVPressable>
             </View>
           </View>
         )}
@@ -336,7 +339,7 @@ export default function FlashcardsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.modeTabs}>
-        <Pressable
+        <TVPressable
           style={[styles.modeTab, mode === "flashcards" && styles.modeTabActive]}
           onPress={() => setMode("flashcards")}
         >
@@ -348,8 +351,8 @@ export default function FlashcardsScreen() {
           >
             Flashcards
           </Text>
-        </Pressable>
-        <Pressable
+        </TVPressable>
+        <TVPressable
           style={[styles.modeTab, mode === "words" && styles.modeTabActive]}
           onPress={() => setMode("words")}
         >
@@ -358,7 +361,7 @@ export default function FlashcardsScreen() {
           >
             My Words
           </Text>
-        </Pressable>
+        </TVPressable>
       </View>
 
       {mode === "flashcards" ? renderFlashcards() : renderWords()}

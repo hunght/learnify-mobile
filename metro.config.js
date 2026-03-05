@@ -1,11 +1,9 @@
 const {
   wrapWithReanimatedMetroConfig,
 } = require("react-native-reanimated/metro-config");
-const {
-  getSentryExpoConfig
-} = require("@sentry/react-native/metro");
+const { getDefaultConfig } = require("expo/metro-config");
 
-const config = getSentryExpoConfig(__dirname);
+const config = getDefaultConfig(__dirname);
 
 // Resolve react-dom/client to empty module for native builds
 // This fixes the @expo/log-box incorrectly importing web dependencies

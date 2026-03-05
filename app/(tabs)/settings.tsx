@@ -1,17 +1,23 @@
 import Constants from "expo-constants";
-import { useState, useEffect, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   FlatList,
   ScrollView,
   Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
+  PermissionsAndroid,
 } from "react-native";
+import { TVTextInput } from "@/components/tv/TVTextInput";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSettingsStore, LANGUAGES } from "../../stores/settings";
 import { useConnectionStore } from "../../stores/connection";
@@ -30,6 +36,9 @@ import type { DiscoveredPeer } from "../../types";
 
 const DEFAULT_SYNC_PORT = 53318;
 const LEGACY_SYNC_PORT = 8384;
+const DISCOVERY_SCAN_TIMEOUT_MS = 15000;
+const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
+  "android.permission.NEARBY_WIFI_DEVICES";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -77,16 +86,83 @@ function normalizeDiscoveredHost(host: string): string {
   return trimmed;
 }
 
+function hostPriority(host: string): number {
+  const bare = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(bare)) return 0;
+  if (bare.endsWith(".local")) return 1;
+  if (bare.includes(":")) return 2;
+  return 3;
+}
+
 function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
-  const host = normalizeDiscoveredHost(device.host);
-  if (!host) return [];
+  const hosts = (
+    device.hosts && device.hosts.length > 0 ? device.hosts : [device.host]
+  )
+    .map(normalizeDiscoveredHost)
+    .filter((host) => host.length > 0)
+    .sort((a, b) => hostPriority(a) - hostPriority(b));
+
+  if (hosts.length === 0) return [];
 
   const ports = [device.port, DEFAULT_SYNC_PORT, LEGACY_SYNC_PORT].filter(
     (value, index, arr): value is number =>
       Number.isInteger(value) && value > 0 && arr.indexOf(value) === index
   );
 
-  return ports.map((port) => `http://${host}:${port}`);
+  const urls: string[] = [];
+  for (const host of hosts) {
+    for (const port of ports) {
+      urls.push(`http://${host}:${port}`);
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
+function isPressableFocused(state: unknown): boolean {
+  return Boolean((state as { focused?: boolean }).focused);
+}
+
+function getAndroidApiLevel(): number {
+  if (Platform.OS !== "android") return 0;
+  if (typeof Platform.Version === "number") return Platform.Version;
+  const parsed = Number.parseInt(String(Platform.Version), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function ensureDiscoveryPermissions(): Promise<{
+  granted: boolean;
+  details: string;
+}> {
+  if (Platform.OS !== "android") {
+    return { granted: true, details: "platform=non-android" };
+  }
+
+  const apiLevel = getAndroidApiLevel();
+  if (apiLevel < 33) {
+    return { granted: true, details: `api=${apiLevel} no-runtime-nearby-required` };
+  }
+
+  const permission =
+    ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
+      typeof PermissionsAndroid.check
+    >[0];
+  const alreadyGranted = await PermissionsAndroid.check(permission);
+  if (alreadyGranted) {
+    return { granted: true, details: `api=${apiLevel} nearby=granted` };
+  }
+
+  const result = await PermissionsAndroid.request(permission, {
+    title: "Allow Nearby Devices",
+    message:
+      "LearnifyTube needs Nearby devices permission to discover your desktop app on local Wi-Fi.",
+    buttonPositive: "Allow",
+    buttonNegative: "Not now",
+  });
+
+  return {
+    granted: result === PermissionsAndroid.RESULTS.GRANTED,
+    details: `api=${apiLevel} nearby=${result}`,
+  };
 }
 
 export default function SettingsScreen() {
@@ -113,7 +189,13 @@ export default function SettingsScreen() {
     []
   );
   const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanDebugDetails, setScanDebugDetails] = useState<string | null>(null);
+  const [scanAttempt, setScanAttempt] = useState(0);
   const [showManualInput, setShowManualInput] = useState(false);
+  const [isManualInputFocused, setIsManualInputFocused] = useState(false);
+  const isTv = Platform.isTV;
+  const discoveredCountRef = useRef(0);
 
   const selectedLang =
     LANGUAGES.find((l) => l.code === targetLang) ?? LANGUAGES[0];
@@ -122,32 +204,106 @@ export default function SettingsScreen() {
     Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
   const appBuild = Constants.nativeBuildVersion ?? "-";
 
+  useEffect(() => {
+    discoveredCountRef.current = discoveredDevices.length;
+  }, [discoveredDevices.length]);
+
   // mDNS scanning when not connected
   useEffect(() => {
-    if (isConnected) return;
+    if (isConnected) {
+      setIsScanning(false);
+      setScanError(null);
+      setScanDebugDetails(null);
+      return;
+    }
 
+    let isCancelled = false;
+    const startedAt = Date.now();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    setDiscoveredDevices([]);
+    setScanError(null);
+    setScanDebugDetails(null);
     setIsScanning(true);
-    startScanning({
-      onPeerFound: (peer) => {
-        setDiscoveredDevices((prev) => {
-          const existing = prev.find((p) => p.name === peer.name);
-          if (existing) return prev.map((p) => (p.name === peer.name ? peer : p));
-          return [...prev, peer];
+
+    const stopScanWithError = (message: string, details: string) => {
+      if (isCancelled) return;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      stopScanning();
+      setIsScanning(false);
+      setScanError(message);
+      setScanDebugDetails(details);
+    };
+
+    const beginScan = async () => {
+      try {
+        const permissionStatus = await ensureDiscoveryPermissions();
+        if (isCancelled) return;
+        if (!permissionStatus.granted) {
+          stopScanWithError(
+            "Nearby devices permission is required to discover desktop on TV.",
+            `attempt=${scanAttempt + 1} ${permissionStatus.details}`
+          );
+          return;
+        }
+
+        startScanning({
+          onPeerFound: (peer) => {
+            if (isCancelled) return;
+            setDiscoveredDevices((prev) => {
+              const existing = prev.find((p) => p.name === peer.name);
+              if (existing) return prev.map((p) => (p.name === peer.name ? peer : p));
+              return [...prev, peer];
+            });
+          },
+          onPeerLost: (name) => {
+            if (isCancelled) return;
+            setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
+          },
+          onError: (error) => {
+            console.error("[Settings] mDNS scan error:", error);
+            const reason = getErrorMessage(error);
+            stopScanWithError(
+              "Nearby discovery failed.",
+              `attempt=${scanAttempt + 1} source=zeroconf reason=${reason}`
+            );
+          },
         });
-      },
-      onPeerLost: (name) => {
-        setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
-      },
-      onError: (error) => {
-        console.error("[Settings] mDNS scan error:", error);
-      },
-    });
+
+        timeoutId = setTimeout(() => {
+          if (isCancelled) return;
+          if (discoveredCountRef.current > 0) return;
+          const elapsedMs = Date.now() - startedAt;
+          stopScanWithError(
+            "Scanning timed out. No nearby desktop found.",
+            `attempt=${scanAttempt + 1} timeoutMs=${DISCOVERY_SCAN_TIMEOUT_MS} elapsedMs=${elapsedMs} devices=${discoveredCountRef.current}`
+          );
+        }, DISCOVERY_SCAN_TIMEOUT_MS);
+      } catch (error) {
+        const reason = getErrorMessage(error);
+        stopScanWithError(
+          "Could not start nearby discovery.",
+          `attempt=${scanAttempt + 1} source=permission-check reason=${reason}`
+        );
+      }
+    };
+
+    void beginScan();
 
     return () => {
+      isCancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
       stopScanning();
       setIsScanning(false);
     };
-  }, [isConnected]);
+  }, [isConnected, scanAttempt]);
+
+  const handleRetryScan = useCallback(() => {
+    setScanAttempt((prev) => prev + 1);
+  }, []);
 
   const refreshUpdateAvailability = useCallback(async () => {
     setIsLoadingUpdateAvailability(true);
@@ -210,7 +366,7 @@ export default function SettingsScreen() {
       const reason = getErrorMessage(error);
       Alert.alert(
         "Connection Failed",
-        `Could not connect to the device.\n\nLast error:\n${reason}\n\nTip: ensure Desktop app Sync is enabled and both devices are on the same Wi-Fi.`
+        `Could not connect to the device.\n\nTried:\n${candidateUrls.join("\n")}\n\nLast error:\n${reason}\n\nTip: ensure Desktop app Sync is enabled and both devices are on the same Wi-Fi.`
       );
     } finally {
       setIsConnecting(false);
@@ -295,12 +451,17 @@ export default function SettingsScreen() {
                   <Text style={styles.connectedUrl}>{serverUrl}</Text>
                 </View>
               </View>
-              <Pressable
-                style={styles.disconnectButton}
+              <TVPressable
+                style={(state) => [
+                  styles.disconnectButton,
+                  state.pressed && styles.pressablePressed,
+                  isTv && isPressableFocused(state) && styles.tvFocusRing,
+                ]}
                 onPress={handleDisconnect}
+                focusable={isTv}
               >
                 <Text style={styles.disconnectButtonText}>Disconnect</Text>
-              </Pressable>
+              </TVPressable>
             </View>
           ) : (
             /* Disconnected state — show discovery + manual */
@@ -315,11 +476,16 @@ export default function SettingsScreen() {
                     )}
                   </View>
                   {discoveredDevices.map((device) => (
-                    <Pressable
+                    <TVPressable
                       key={device.name}
-                      style={styles.deviceItem}
+                      style={(state) => [
+                        styles.deviceItem,
+                        state.pressed && styles.pressablePressed,
+                        isTv && isPressableFocused(state) && styles.tvFocusRing,
+                      ]}
                       onPress={() => handleConnectToDevice(device)}
                       disabled={isConnecting}
+                      focusable={isTv}
                     >
                       <View style={styles.deviceIcon}>
                         <Text style={styles.deviceIconText}>💻</Text>
@@ -335,7 +501,7 @@ export default function SettingsScreen() {
                       ) : (
                         <Text style={styles.connectArrow}>›</Text>
                       )}
-                    </Pressable>
+                    </TVPressable>
                   ))}
                 </View>
               )}
@@ -350,11 +516,37 @@ export default function SettingsScreen() {
                 </View>
               )}
 
+              {discoveredDevices.length === 0 && !isScanning && scanError && (
+                <View style={styles.scanErrorCard}>
+                  <Text style={styles.scanErrorTitle}>Discovery stopped</Text>
+                  <Text style={styles.scanErrorText}>{scanError}</Text>
+                  {scanDebugDetails ? (
+                    <Text style={styles.scanErrorDebug}>{scanDebugDetails}</Text>
+                  ) : null}
+                  <TVPressable
+                    style={(state) => [
+                      styles.scanRetryButton,
+                      state.pressed && styles.pressablePressed,
+                      isTv && isPressableFocused(state) && styles.tvFocusRing,
+                    ]}
+                    onPress={handleRetryScan}
+                    focusable={isTv}
+                  >
+                    <Text style={styles.scanRetryButtonText}>Retry Scan</Text>
+                  </TVPressable>
+                </View>
+              )}
+
               {/* Manual connect toggle */}
               {!showManualInput ? (
-                <Pressable
-                  style={styles.manualConnectRow}
+                <TVPressable
+                  style={(state) => [
+                    styles.manualConnectRow,
+                    state.pressed && styles.pressablePressed,
+                    isTv && isPressableFocused(state) && styles.tvFocusRing,
+                  ]}
                   onPress={() => setShowManualInput(true)}
+                  focusable={isTv}
                 >
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingLabel}>Connect Manually</Text>
@@ -363,14 +555,17 @@ export default function SettingsScreen() {
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
-                </Pressable>
+                </TVPressable>
               ) : (
                 <View style={styles.manualInputCard}>
                   <Text style={styles.manualInputLabel}>
                     Enter desktop IP address
                   </Text>
-                  <TextInput
-                    style={styles.input}
+                  <TVTextInput
+                    style={[
+                      styles.input,
+                      isTv && isManualInputFocused && styles.tvInputFocused,
+                    ]}
                     placeholder="192.168.1.100"
                     placeholderTextColor="#666"
                     value={ipAddress}
@@ -378,31 +573,41 @@ export default function SettingsScreen() {
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    onFocus={() => setIsManualInputFocused(true)}
+                    onBlur={() => setIsManualInputFocused(false)}
                   />
                   <View style={styles.manualInputActions}>
-                    <Pressable
-                      style={styles.cancelButton}
+                    <TVPressable
+                      style={(state) => [
+                        styles.cancelButton,
+                        state.pressed && styles.pressablePressed,
+                        isTv && isPressableFocused(state) && styles.tvFocusRing,
+                      ]}
                       onPress={() => {
                         setShowManualInput(false);
                         setIpAddress("");
                       }}
+                      focusable={isTv}
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
+                    </TVPressable>
+                    <TVPressable
+                      style={(state) => [
                         styles.connectButton,
                         isConnecting && styles.connectButtonDisabled,
+                        state.pressed && !isConnecting && styles.pressablePressed,
+                        isTv && isPressableFocused(state) && styles.tvFocusRing,
                       ]}
                       onPress={handleManualConnect}
                       disabled={isConnecting}
+                      focusable={isTv}
                     >
                       {isConnecting ? (
                         <ActivityIndicator color="#fff" size="small" />
                       ) : (
                         <Text style={styles.connectButtonText}>Connect</Text>
                       )}
-                    </Pressable>
+                    </TVPressable>
                   </View>
                 </View>
               )}
@@ -413,9 +618,14 @@ export default function SettingsScreen() {
         {/* Translation Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Translation</Text>
-          <Pressable
-            style={styles.settingRow}
+          <TVPressable
+            style={(state) => [
+              styles.settingRow,
+              state.pressed && styles.pressablePressed,
+              isTv && isPressableFocused(state) && styles.tvFocusRing,
+            ]}
             onPress={() => setShowLangPicker(true)}
+            focusable={isTv}
           >
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Target Language</Text>
@@ -427,7 +637,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingValueText}>{selectedLang.name}</Text>
               <Text style={styles.chevron}>›</Text>
             </View>
-          </Pressable>
+          </TVPressable>
         </View>
 
         {/* App Section */}
@@ -447,13 +657,16 @@ export default function SettingsScreen() {
           )}
 
           {updateAvailability?.hasUpdate && (
-            <Pressable
-              style={[
+            <TVPressable
+              style={(state) => [
                 styles.settingRow,
                 isCheckingUpdate && styles.settingRowDisabled,
+                state.pressed && !isCheckingUpdate && styles.pressablePressed,
+                isTv && isPressableFocused(state) && styles.tvFocusRing,
               ]}
               onPress={handleUpdatePress}
               disabled={isCheckingUpdate}
+              focusable={isTv}
             >
               <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Update App</Text>
@@ -469,7 +682,7 @@ export default function SettingsScreen() {
                 </Text>
                 <Text style={styles.chevron}>›</Text>
               </View>
-            </Pressable>
+            </TVPressable>
           )}
 
           {!isLoadingUpdateAvailability &&
@@ -501,9 +714,11 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowLangPicker(false)}
       >
-        <Pressable
+        <TVPressable
           style={styles.modalOverlay}
           onPress={() => setShowLangPicker(false)}
+          focusable={false}
+          disableTVFocusStyle
         >
           <View
             style={styles.modalContent}
@@ -517,15 +732,18 @@ export default function SettingsScreen() {
               keyExtractor={(item) => item.code}
               style={styles.langList}
               renderItem={({ item }) => (
-                <Pressable
-                  style={[
+                <TVPressable
+                  style={(state) => [
                     styles.langItem,
                     item.code === targetLang && styles.langItemActive,
+                    state.pressed && styles.pressablePressed,
+                    isTv && isPressableFocused(state) && styles.tvFocusRing,
                   ]}
                   onPress={() => {
                     setTargetLang(item.code);
                     setShowLangPicker(false);
                   }}
+                  focusable={isTv}
                 >
                   <Text
                     style={[
@@ -539,11 +757,11 @@ export default function SettingsScreen() {
                   {item.code === targetLang && (
                     <Text style={styles.checkmark}>✓</Text>
                   )}
-                </Pressable>
+                </TVPressable>
               )}
             />
           </View>
-        </Pressable>
+        </TVPressable>
       </Modal>
     </SafeAreaView>
   );
@@ -692,6 +910,46 @@ const styles = StyleSheet.create({
     color: "#a0a0a0",
     fontSize: 13,
   },
+  scanErrorCard: {
+    backgroundColor: "#3b1d20",
+    borderRadius: 12,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#6b2a31",
+    gap: 6,
+  },
+  scanErrorTitle: {
+    color: "#fda4af",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  scanErrorText: {
+    color: "#fecdd3",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  scanErrorDebug: {
+    color: "#fca5a5",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  scanRetryButton: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#5b2930",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#7f3b44",
+  },
+  scanRetryButtonText: {
+    color: "#ffe4e6",
+    fontSize: 12,
+    fontWeight: "700",
+  },
 
   /* Manual connect */
   manualConnectRow: {
@@ -727,6 +985,14 @@ const styles = StyleSheet.create({
     borderColor: "#2d2d44",
     marginBottom: 12,
   },
+  tvInputFocused: {
+    borderColor: "#67e8f9",
+    borderWidth: 2,
+    shadowColor: "#67e8f9",
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   manualInputActions: {
     flexDirection: "row",
     gap: 10,
@@ -757,6 +1023,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
+  },
+  pressablePressed: {
+    opacity: 0.85,
+  },
+  tvFocusRing: {
+    borderWidth: 2,
+    borderColor: "#67e8f9",
+    shadowColor: "#67e8f9",
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 8,
   },
 
   /* General settings */

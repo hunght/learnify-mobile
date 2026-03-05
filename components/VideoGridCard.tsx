@@ -1,13 +1,14 @@
-import { useState } from "react";
+import {
+    useState } from "react";
 import {
     View,
     Text,
-    Pressable,
     Image,
     StyleSheet,
     ActivityIndicator,
     Platform,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { colors, radius, spacing, fontSize, fontWeight } from "../theme";
 import { Film } from "../theme/icons";
 
@@ -57,7 +58,7 @@ export function VideoGridCard({
     const [isFocused, setIsFocused] = useState(false);
 
     return (
-        <Pressable
+        <TVPressable
             style={({ pressed }) => [styles.card, pressed && !isPending && styles.cardPressed]}
             onPress={onPress}
             disabled={isPending}
@@ -132,15 +133,15 @@ export function VideoGridCard({
 
             {/* Cancel button when pending */}
             {isPending && onCancelPress && (
-                <Pressable
+                <TVPressable
                     style={styles.cancelButton}
                     onPress={onCancelPress}
                     focusable={!isTv}
                 >
                     <Text style={styles.cancelText}>Cancel</Text>
-                </Pressable>
+                </TVPressable>
             )}
-        </Pressable>
+        </TVPressable>
     );
 }
 

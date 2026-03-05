@@ -1,14 +1,17 @@
-import { useState, useEffect } from "react";
+import {
+  useState,
+  useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  Pressable,
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
 } from "react-native";
+import { TVTextInput } from "@/components/tv/TVTextInput";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../stores/connection";
@@ -77,16 +80,36 @@ function normalizeDiscoveredHost(host: string): string {
   return trimmed;
 }
 
+function hostPriority(host: string): number {
+  const bare = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(bare)) return 0;
+  if (bare.endsWith(".local")) return 1;
+  if (bare.includes(":")) return 2;
+  return 3;
+}
+
 function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
-  const host = normalizeDiscoveredHost(device.host);
-  if (!host) return [];
+  const hosts = (
+    device.hosts && device.hosts.length > 0 ? device.hosts : [device.host]
+  )
+    .map(normalizeDiscoveredHost)
+    .filter((host) => host.length > 0)
+    .sort((a, b) => hostPriority(a) - hostPriority(b));
+
+  if (hosts.length === 0) return [];
 
   const ports = [device.port, DEFAULT_SYNC_PORT, LEGACY_SYNC_PORT].filter(
     (value, index, arr): value is number =>
       Number.isInteger(value) && value > 0 && arr.indexOf(value) === index
   );
 
-  return ports.map((port) => `http://${host}:${port}`);
+  const urls: string[] = [];
+  for (const host of hosts) {
+    for (const port of ports) {
+      urls.push(`http://${host}:${port}`);
+    }
+  }
+  return Array.from(new Set(urls));
 }
 
 export default function ConnectScreen() {
@@ -96,6 +119,7 @@ export default function ConnectScreen() {
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredPeer[]>([]);
   const [isScanning, setIsScanning] = useState(false);
+  const isTv = Platform.isTV;
 
   const { setServerUrl, setServerName } = useConnectionStore();
   const { addVideo } = useLibraryStore();
@@ -321,11 +345,12 @@ export default function ConnectScreen() {
                   )}
                 </View>
                 {discoveredDevices.map((device) => (
-                  <Pressable
+                  <TVPressable
                     key={device.name}
                     style={styles.deviceItem}
                     onPress={() => handleConnectToDevice(device)}
                     disabled={isConnecting}
+                    focusable={isTv}
                   >
                     <View style={styles.deviceIcon}>
                       <Text style={styles.deviceIconText}>💻</Text>
@@ -341,7 +366,7 @@ export default function ConnectScreen() {
                     ) : (
                       <Text style={styles.connectArrow}>›</Text>
                     )}
-                  </Pressable>
+                  </TVPressable>
                 ))}
               </View>
             )}
@@ -363,7 +388,7 @@ export default function ConnectScreen() {
             </Text>
 
             <View style={styles.inputContainer}>
-              <TextInput
+              <TVTextInput
                 style={styles.input}
                 placeholder="192.168.1.100 or 192.168.1.100:53318"
                 placeholderTextColor="#666"
@@ -375,17 +400,18 @@ export default function ConnectScreen() {
               />
             </View>
 
-            <Pressable
+            <TVPressable
               style={[styles.connectButton, isConnecting && styles.connectButtonDisabled]}
               onPress={handleConnect}
               disabled={isConnecting}
+              focusable={isTv}
             >
               {isConnecting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.connectButtonText}>Connect</Text>
               )}
-            </Pressable>
+            </TVPressable>
 
             {discoveredDevices.length === 0 && (
               <View style={styles.helpSection}>
@@ -419,12 +445,13 @@ export default function ConnectScreen() {
               keyExtractor={(item) => item.id}
               style={styles.videoList}
               renderItem={({ item }) => (
-                <Pressable
+                <TVPressable
                   style={[
                     styles.videoItem,
                     selectedVideos.has(item.id) && styles.videoItemSelected,
                   ]}
                   onPress={() => toggleVideoSelection(item.id)}
+                  focusable={isTv}
                 >
                   <View style={styles.checkbox}>
                     {selectedVideos.has(item.id) && (
@@ -440,23 +467,24 @@ export default function ConnectScreen() {
                       {formatDuration(item.duration)} • {formatFileSize(item.fileSize)}
                     </Text>
                   </View>
-                </Pressable>
+                </TVPressable>
               )}
             />
             <View style={styles.footer}>
               <Text style={styles.selectedCount}>
                 {selectedVideos.size} selected
               </Text>
-              <Pressable
+              <TVPressable
                 style={[
                   styles.downloadButton,
                   selectedVideos.size === 0 && styles.downloadButtonDisabled,
                 ]}
                 onPress={handleDownloadSelected}
                 disabled={selectedVideos.size === 0}
+                focusable={isTv}
               >
                 <Text style={styles.downloadButtonText}>Download Selected</Text>
-              </Pressable>
+              </TVPressable>
             </View>
           </>
         )}

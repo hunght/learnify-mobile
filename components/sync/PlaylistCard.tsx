@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { View, Text, Pressable, Image, StyleSheet, Platform } from "react-native";
+import {
+  useState } from "react";
+import { View,
+  Text,
+  Image,
+  StyleSheet,
+  Platform,
+} from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { RemotePlaylist } from "../../types";
 import { api } from "../../services/api";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
@@ -43,7 +50,7 @@ export function PlaylistCard({
   const showImage = thumbnailUrl && !imageError;
 
   return (
-    <Pressable
+    <TVPressable
       style={[
         styles.container,
         isTv && isFocused && styles.containerFocused,
@@ -92,15 +99,15 @@ export function PlaylistCard({
         </View>
       </View>
       {onSavePress && (
-        <Pressable style={styles.saveButton} onPress={onSavePress} focusable={!isTv}>
+        <TVPressable style={styles.saveButton} onPress={onSavePress} focusable={!isTv}>
           <Heart
             size={20}
             color={isFavorited ? colors.destructive : colors.mutedForeground}
             fill={isFavorited ? colors.destructive : "none"}
           />
-        </Pressable>
+        </TVPressable>
       )}
-    </Pressable>
+    </TVPressable>
   );
 }
 

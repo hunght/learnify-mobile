@@ -59,6 +59,7 @@ export interface VideoMeta {
 export interface DiscoveredPeer {
   name: string;
   host: string;
+  hosts?: string[];
   port: number;
   videoCount: number;
 }

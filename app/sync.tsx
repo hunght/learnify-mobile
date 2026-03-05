@@ -1,13 +1,16 @@
-import { useEffect, useCallback, useState } from "react";
+import {
+  useEffect,
+  useCallback,
+  useState } from "react";
 import {
   View,
   Text,
   FlatList,
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Alert,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { useRouter } from "expo-router";
 import { useSyncStore } from "../stores/sync";
 import { useConnectionStore } from "../stores/connection";
@@ -514,12 +517,12 @@ export default function SyncScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>Not connected to server</Text>
-        <Pressable
+        <TVPressable
           style={styles.connectButton}
           onPress={() => router.push("/(tabs)/settings")}
         >
           <Text style={styles.connectButtonText}>Connect</Text>
-        </Pressable>
+        </TVPressable>
       </View>
     );
   }
@@ -649,9 +652,9 @@ export default function SyncScreen() {
       <View style={styles.container}>
         {/* Header with back button */}
         <View style={styles.videoHeader}>
-          <Pressable style={styles.backButton} onPress={handleBackPress}>
+          <TVPressable style={styles.backButton} onPress={handleBackPress}>
             <Text style={styles.backIcon}>←</Text>
-          </Pressable>
+          </TVPressable>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {currentTitle}
@@ -664,7 +667,7 @@ export default function SyncScreen() {
           </View>
           {/* Save Offline Button */}
           {!isChannelDetail && currentVideos.length > 0 && serverUrl && (
-            <Pressable
+            <TVPressable
               style={[
                 styles.saveOfflineButton,
                 isSaveActionDone && styles.saveOfflineButtonDisabled,
@@ -679,7 +682,7 @@ export default function SyncScreen() {
                     ? "Save Playlist"
                     : "Save All"}
               </Text>
-            </Pressable>
+            </TVPressable>
           )}
         </View>
 
@@ -700,7 +703,7 @@ export default function SyncScreen() {
         {/* Selection toolbar */}
         {!isChannelDetail && syncableCount > 0 && (
           <View style={styles.toolbar}>
-            <Pressable
+            <TVPressable
               style={styles.toolbarButton}
               onPress={
                 selectedVideoIds.size > 0 ? clearVideoSelection : selectAllVideos
@@ -711,14 +714,14 @@ export default function SyncScreen() {
                   ? `Deselect (${selectedVideoIds.size})`
                   : `Select All (${syncableCount})`}
               </Text>
-            </Pressable>
+            </TVPressable>
             {selectedVideoIds.size > 0 && (
-              <Pressable style={styles.syncAllButton} onPress={handleSyncSelected}>
+              <TVPressable style={styles.syncAllButton} onPress={handleSyncSelected}>
                 <Text style={styles.syncAllButtonText}>
                   Sync {selectedVideoIds.size} video
                   {selectedVideoIds.size !== 1 ? "s" : ""}
                 </Text>
-              </Pressable>
+              </TVPressable>
             )}
           </View>
         )}
@@ -785,12 +788,12 @@ export default function SyncScreen() {
           <Text style={styles.offlineBannerText}>
             Offline mode: showing cached data
           </Text>
-          <Pressable
+          <TVPressable
             style={styles.offlineBannerButton}
             onPress={() => router.push("/(tabs)/settings")}
           >
             <Text style={styles.offlineBannerButtonText}>Reconnect</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       )}
       <SyncTabBar activeTab={activeTab} onTabChange={setActiveTab} />

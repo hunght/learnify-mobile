@@ -1,17 +1,23 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   FlatList,
   ScrollView,
   Dimensions,
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   type ViewToken,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { useLocalSearchParams, router } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,6 +80,7 @@ function renderDescriptionWithTimestamps(
 }
 
 export default function PlayerScreen() {
+  const isTv = Platform.isTV;
   const { id, start } = useLocalSearchParams<{ id: string; start?: string }>();
   const libraryVideo = useLibraryStore((state) =>
     state.videos.find((v) => v.id === id)
@@ -688,15 +695,16 @@ export default function PlayerScreen() {
   if (!video) { // Changed condition
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <Pressable
+        <TVPressable
           style={styles.backButton}
           onPress={() => {
             clearPlaylist(); // Added clearPlaylist
             router.back();
           }}
+          hasTVPreferredFocus={isTv}
         >
           <Text style={styles.backButtonText}>← Back</Text>
-        </Pressable>
+        </TVPressable>
         <View style={styles.noTranscript}>
           <Text style={styles.errorText}>Video not found</Text>
         </View>
@@ -708,12 +716,16 @@ export default function PlayerScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerRow}>
-          <Pressable onPress={handleBackPress} style={styles.backButton}>
+          <TVPressable
+            onPress={handleBackPress}
+            style={styles.backButton}
+            hasTVPreferredFocus={isTv}
+          >
             <Text style={styles.backButtonText}>← Back</Text>
-          </Pressable>
+          </TVPressable>
           {playlistId && (
             <View style={styles.playlistControls}>
-              <Pressable
+              <TVPressable
                 style={[
                   styles.navButton,
                   !hasPreviousVideo && styles.navButtonDisabled,
@@ -729,8 +741,8 @@ export default function PlayerScreen() {
                 >
                   ⏮
                 </Text>
-              </Pressable>
-              <Pressable
+              </TVPressable>
+              <TVPressable
                 style={[
                   styles.navButton,
                   !hasNextVideo && styles.navButtonDisabled,
@@ -746,7 +758,7 @@ export default function PlayerScreen() {
                 >
                   ⏭
                 </Text>
-              </Pressable>
+              </TVPressable>
             </View>
           )}
         </View>
@@ -777,13 +789,13 @@ export default function PlayerScreen() {
 
       {videoDescription && (
         <View style={styles.descriptionContainer}>
-          <Pressable
+          <TVPressable
             style={styles.descriptionToggle}
             onPress={() => setIsDescriptionExpanded((prev) => !prev)}
           >
             <Text style={styles.descriptionToggleLabel}>Video Description</Text>
             <Text style={styles.descriptionToggleIcon}>{isDescriptionExpanded ? "▾" : "▸"}</Text>
-          </Pressable>
+          </TVPressable>
 
           {isDescriptionExpanded && (
             <View style={styles.descriptionBody}>
@@ -825,7 +837,7 @@ export default function PlayerScreen() {
             maxToRenderPerBatch={10}
             windowSize={10}
             renderItem={({ item, index }) => (
-              <Pressable
+              <TVPressable
                 style={[
                   styles.segment,
                   index === currentSegmentIndex && styles.segmentActive,
@@ -838,7 +850,7 @@ export default function PlayerScreen() {
                 <View style={{ flex: 1 }}>
                   {renderTappableSegment(item.text, item.start, index === currentSegmentIndex)}
                 </View>
-              </Pressable>
+              </TVPressable>
             )}
           />
         </View>
@@ -847,7 +859,7 @@ export default function PlayerScreen() {
           <Text style={styles.noTranscriptText}>
             No transcript available for this video
           </Text>
-          <Pressable
+          <TVPressable
             style={[
               styles.downloadTranscriptButton,
               isDownloadingTranscript && styles.downloadTranscriptButtonDisabled,
@@ -867,7 +879,7 @@ export default function PlayerScreen() {
                 Download Transcript from Desktop
               </Text>
             )}
-          </Pressable>
+          </TVPressable>
         </View>
       )}
 
@@ -878,7 +890,12 @@ export default function PlayerScreen() {
         animationType="slide"
         onRequestClose={closeWordModal}
       >
-        <Pressable style={styles.modalOverlay} onPress={closeWordModal}>
+        <TVPressable
+          style={styles.modalOverlay}
+          onPress={closeWordModal}
+          focusable={false}
+          disableTVFocusStyle
+        >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalWord}>{selectedWord}</Text>
@@ -904,7 +921,7 @@ export default function PlayerScreen() {
                     <Text style={styles.savedBadgeText}>✓ Saved to My Words</Text>
                   </View>
                 ) : (
-                  <Pressable
+                  <TVPressable
                     style={styles.saveWordButton}
                     onPress={handleSaveWord}
                     disabled={isSavingWord}
@@ -916,7 +933,7 @@ export default function PlayerScreen() {
                         + Save to My Words
                       </Text>
                     )}
-                  </Pressable>
+                  </TVPressable>
                 )}
               </>
             ) : (
@@ -925,11 +942,11 @@ export default function PlayerScreen() {
               </Text>
             )}
 
-            <Pressable style={styles.modalCloseButton} onPress={closeWordModal}>
+            <TVPressable style={styles.modalCloseButton} onPress={closeWordModal}>
               <Text style={styles.modalCloseButtonText}>Close</Text>
-            </Pressable>
+            </TVPressable>
           </View>
-        </Pressable>
+        </TVPressable>
       </Modal>
     </View>
   );

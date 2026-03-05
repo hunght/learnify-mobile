@@ -1,4 +1,5 @@
-import { View, Text, Pressable, Image, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { RemoteSubscription } from "../../types";
 import {
   colors,
@@ -21,7 +22,7 @@ export function SubscriptionCard({
   const placeholderColor = getPlaceholderColor(subscription.channelTitle);
 
   return (
-    <Pressable style={styles.container} onPress={onPress}>
+    <TVPressable style={styles.container} onPress={onPress}>
       <View style={styles.thumbnailContainer}>
         {subscription.thumbnailUrl ? (
           <Image
@@ -52,7 +53,7 @@ export function SubscriptionCard({
           {subscription.videoCount !== 1 ? "s" : ""}
         </Text>
       </View>
-    </Pressable>
+    </TVPressable>
   );
 }
 

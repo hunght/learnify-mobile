@@ -1,9 +1,39 @@
 import { Tabs } from "expo-router";
+import type { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
+import { Platform, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { colors } from "../../theme";
 import { Home, Layers, Clock, Library, Settings } from "../../theme/icons";
 
+function TVTabBarButton({
+  children,
+  accessibilityState,
+  style,
+  ...props
+}: BottomTabBarButtonProps) {
+  const isSelected = Boolean(accessibilityState?.selected);
+
+  return (
+    <TVPressable
+      {...props}
+      style={({ focused, pressed }) => [
+        style,
+        styles.tvTabButton,
+        isSelected && styles.tvTabButtonSelected,
+        focused && styles.tvTabButtonFocused,
+        pressed && styles.tvTabButtonPressed,
+      ]}
+      hasTVPreferredFocus={isSelected}
+      disableTVFocusStyle
+    >
+      {children}
+    </TVPressable>
+  );
+}
+
 export default function TabsLayout() {
+  const isTv = Platform.isTV;
   const insets = useSafeAreaInsets();
   const tabBarBottomPadding = Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + 8 + tabBarBottomPadding;
@@ -30,10 +60,11 @@ export default function TabsLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: isTv ? 13 : 11,
           fontWeight: "500",
           marginTop: 4,
         },
+        tabBarButton: isTv ? (props) => <TVTabBarButton {...props} /> : undefined,
       }}
     >
       <Tabs.Screen
@@ -85,3 +116,25 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tvTabButton: {
+    marginHorizontal: 4,
+    borderRadius: 12,
+  },
+  tvTabButtonSelected: {
+    backgroundColor: colors.card,
+  },
+  tvTabButtonFocused: {
+    borderWidth: 2,
+    borderColor: colors.ring,
+    backgroundColor: colors.cardHover,
+    shadowColor: colors.ring,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  tvTabButtonPressed: {
+    opacity: 0.92,
+  },
+});

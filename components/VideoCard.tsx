@@ -1,16 +1,16 @@
 import {
   useState,
-} from "react";
+  } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   Image,
   Platform,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { Link, type Href } from "expo-router";
 import type { Video } from "../types";
 import { useDownloadStore } from "../stores/downloads";
@@ -66,7 +66,7 @@ export function VideoCard({
 
   return (
     <Link href={href} asChild>
-      <Pressable
+      <TVPressable
         style={({ pressed }) =>
           StyleSheet.flatten([
             styles.container,
@@ -137,22 +137,22 @@ export function VideoCard({
             </Text>
           ) : null}
           {!isTv && (isDownloading || isQueued) && (
-            <Pressable style={styles.cancelButton} onPress={handleCancel}>
+            <TVPressable style={styles.cancelButton} onPress={handleCancel}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
+            </TVPressable>
           )}
           {!isTv && isFailed && (
             <View style={styles.failedActions}>
               <Text style={styles.errorText} numberOfLines={1}>
                 {download?.error || "Failed"}
               </Text>
-              <Pressable style={styles.retryButton} onPress={handleRetry}>
+              <TVPressable style={styles.retryButton} onPress={handleRetry}>
                 <Text style={styles.retryButtonText}>Retry</Text>
-              </Pressable>
+              </TVPressable>
             </View>
           )}
         </View>
-      </Pressable>
+      </TVPressable>
     </Link>
   );
 }

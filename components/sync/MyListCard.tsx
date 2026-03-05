@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { View, Text, Pressable, Image, StyleSheet, Platform } from "react-native";
+import {
+  useState } from "react";
+import { View,
+  Text,
+  Image,
+  StyleSheet,
+  Platform,
+} from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { RemoteMyList } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Plus } from "../../theme/icons";
@@ -19,7 +26,7 @@ export function MyListCard({
   const [isFocused, setIsFocused] = useState(false);
 
   return (
-    <Pressable
+    <TVPressable
       style={[styles.container, isTv && isFocused && styles.containerFocused]}
       onPress={onPress}
       focusable={isTv}
@@ -53,7 +60,7 @@ export function MyListCard({
           {myList.itemCount} item{myList.itemCount !== 1 ? "s" : ""}
         </Text>
       </View>
-    </Pressable>
+    </TVPressable>
   );
 }
 

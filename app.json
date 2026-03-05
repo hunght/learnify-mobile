@@ -27,6 +27,7 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_WIFI_STATE",
         "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.NEARBY_WIFI_DEVICES",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.REQUEST_INSTALL_PACKAGES"
@@ -53,15 +54,7 @@
           "supportsPictureInPicture": true
         }
       ],
-      "expo-sqlite",
-      [
-        "@sentry/react-native/expo",
-        {
-          "url": "https://sentry.io/",
-          "project": "local-send-react-native",
-          "organization": "nexttradingbot"
-        }
-      ]
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true

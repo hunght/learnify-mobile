@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState } from "react";
+import { useLocalSearchParams,
+  useRouter } from "expo-router";
 import {
   View,
   Text,
   FlatList,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VideoGridCard } from "../../components/VideoGridCard";
 import { getSavedPlaylistWithItems } from "../../db/repositories/playlists";
@@ -32,6 +39,7 @@ type CardPendingState =
 const PREPARE_CANCELLED_MESSAGE = "Download cancelled";
 
 export default function SavedPlaylistScreen() {
+  const isTv = Platform.isTV;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const serverUrl = useConnectionStore((state) => state.serverUrl);
@@ -330,9 +338,13 @@ export default function SavedPlaylistScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>Playlist not found</Text>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <TVPressable
+            style={styles.backButton}
+            onPress={() => router.back()}
+            hasTVPreferredFocus={isTv}
+          >
             <Text style={styles.backButtonText}>Go Back</Text>
-          </Pressable>
+          </TVPressable>
         </View>
       </SafeAreaView>
     );
@@ -348,9 +360,13 @@ export default function SavedPlaylistScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <Pressable style={styles.headerBackButton} onPress={() => router.back()}>
+        <TVPressable
+          style={styles.headerBackButton}
+          onPress={() => router.back()}
+          hasTVPreferredFocus={isTv && playlist.items.length === 0}
+        >
           <Text style={styles.headerBackIcon}>←</Text>
-        </Pressable>
+        </TVPressable>
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {playlist.title}
@@ -378,7 +394,7 @@ export default function SavedPlaylistScreen() {
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.gridList}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const pendingState = getPendingState(item.videoId);
           const canCancel =
             pendingState.type === "preparing" ||
@@ -398,6 +414,7 @@ export default function SavedPlaylistScreen() {
               onPress={() => {
                 void handleVideoPress(item);
               }}
+              hasTVPreferredFocus={isTv && index === 0}
               onCancelPress={
                 canCancel ? () => handleCancelVideo(item.videoId) : undefined
               }

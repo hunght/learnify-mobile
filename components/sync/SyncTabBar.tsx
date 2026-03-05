@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import {
+  useState } from "react";
+import { View,
+  Text,
+  StyleSheet,
+  Platform,
+} from "react-native";
+import { TVPressable } from "@/components/tv/TVPressable";
 import type { BrowseTab } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
@@ -25,7 +31,7 @@ export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
         const isActive = activeTab === tab.key;
         const isFocused = focusedTab === tab.key;
         return (
-          <Pressable
+          <TVPressable
             key={tab.key}
             style={({ pressed }) => [
               styles.tab,
@@ -42,7 +48,7 @@ export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
             <Text style={[styles.tabText, isActive && styles.activeTabText]}>
               {tab.label}
             </Text>
-          </Pressable>
+          </TVPressable>
         );
       })}
     </View>
