@@ -10,9 +10,11 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import { Logs } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../../stores/connection";
 import { api } from "../../services/api";
+import { logger, type AppLogEntry } from "../../services/logger";
 import {
   checkForAndroidApkUpdate,
   getAndroidApkUpdateAvailability,
@@ -30,6 +32,7 @@ const DEFAULT_SYNC_PORT = 53318;
 const LEGACY_SYNC_PORT = 8384;
 const AUTO_CONNECT_DELAY_SECONDS = 3;
 const AUTO_CONNECT_DELAY_MS = AUTO_CONNECT_DELAY_SECONDS * 1000;
+const LOG_PAGE_SIZE = 16;
 const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
   "android.permission.NEARBY_WIFI_DEVICES";
 
@@ -122,7 +125,12 @@ async function ensureDiscoveryPermissions(): Promise<boolean> {
   if (Platform.OS !== "android") return true;
 
   const apiLevel = getAndroidApiLevel();
-  if (apiLevel < 33) return true;
+  if (apiLevel < 33) {
+    logger.info("[TV Discovery] Permission check skipped for Android < 33", {
+      apiLevel,
+    });
+    return true;
+  }
 
   const permission =
     ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
@@ -130,8 +138,16 @@ async function ensureDiscoveryPermissions(): Promise<boolean> {
     >[0];
 
   const alreadyGranted = await PermissionsAndroid.check(permission);
-  if (alreadyGranted) return true;
+  if (alreadyGranted) {
+    logger.info("[TV Discovery] Nearby devices permission already granted", {
+      apiLevel,
+    });
+    return true;
+  }
 
+  logger.warn("[TV Discovery] Nearby devices permission not granted; requesting", {
+    apiLevel,
+  });
   const result = await PermissionsAndroid.request(permission, {
     title: "Allow Nearby Devices",
     message:
@@ -140,7 +156,13 @@ async function ensureDiscoveryPermissions(): Promise<boolean> {
     buttonNegative: "Not now",
   });
 
-  return result === PermissionsAndroid.RESULTS.GRANTED;
+  const granted = result === PermissionsAndroid.RESULTS.GRANTED;
+  if (granted) {
+    logger.info("[TV Discovery] Nearby devices permission granted");
+  } else {
+    logger.warn("[TV Discovery] Nearby devices permission denied", { result });
+  }
+  return granted;
 }
 
 export default function TVSettingsScreen() {
@@ -177,6 +199,19 @@ export default function TVSettingsScreen() {
   const appVersion =
     Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
   const appBuild = Constants.nativeBuildVersion ?? "-";
+  const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+  const [logEntries, setLogEntries] = useState<AppLogEntry[]>(() =>
+    logger.getEntries()
+  );
+  const [logPage, setLogPage] = useState(0);
+
+  const reversedLogs = useMemo(() => [...logEntries].reverse(), [logEntries]);
+  const totalLogPages = Math.max(1, Math.ceil(reversedLogs.length / LOG_PAGE_SIZE));
+  const clampedLogPage = Math.min(logPage, totalLogPages - 1);
+  const pageStart = clampedLogPage * LOG_PAGE_SIZE;
+  const pagedLogs = reversedLogs.slice(pageStart, pageStart + LOG_PAGE_SIZE);
+  const hasOlderLogs = pageStart + LOG_PAGE_SIZE < reversedLogs.length;
+  const hasNewerLogs = clampedLogPage > 0;
 
   const clearAutoConnectTimers = useCallback(() => {
     if (autoConnectIntervalRef.current) {
@@ -189,6 +224,32 @@ export default function TVSettingsScreen() {
     }
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = logger.subscribe((entries) => {
+      setLogEntries(entries);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (logPage !== clampedLogPage) {
+      setLogPage(clampedLogPage);
+    }
+  }, [clampedLogPage, logPage]);
+
+  useEffect(() => {
+    logger.info("[TV Settings] Opened settings", {
+      platform: Platform.OS,
+      androidApiLevel: getAndroidApiLevel(),
+      appVersion,
+      appBuild,
+    });
+
+    return () => {
+      logger.info("[TV Settings] Closed settings");
+    };
+  }, [appBuild, appVersion]);
+
   const connectWithCandidates = useCallback(
     async (
       candidateUrls: string[],
@@ -199,15 +260,25 @@ export default function TVSettingsScreen() {
         if (!options?.fromAuto) {
           setConnectionError("No valid connection endpoint found.");
         }
+        logger.warn("[TV Discovery] No candidate URLs to connect", {
+          fallbackName,
+          fromAuto: options?.fromAuto ?? false,
+        });
         return false;
       }
 
       setIsConnecting(true);
       setConnectionError(null);
       let lastError: unknown = null;
+      logger.info("[TV Discovery] Connecting with candidate URLs", {
+        fallbackName,
+        fromAuto: options?.fromAuto ?? false,
+        candidateUrls,
+      });
 
       try {
         for (const baseUrl of candidateUrls) {
+          logger.info("[TV Discovery] Trying endpoint", { baseUrl });
           try {
             const info = await api.getInfo(baseUrl);
             assertSyncCompatibility(info);
@@ -215,18 +286,34 @@ export default function TVSettingsScreen() {
             setServerUrl(baseUrl);
             setServerName(info.name ?? fallbackName);
             setConnectionError(null);
+            logger.info("[TV Discovery] Connected to desktop", {
+              baseUrl,
+              serverName: info.name ?? fallbackName,
+            });
             return true;
           } catch (error) {
             if (error instanceof SyncCompatibilityError) {
               setConnectionError(error.message);
+              logger.warn("[TV Discovery] Sync compatibility failed", {
+                baseUrl,
+                message: error.message,
+              });
               return false;
             }
+            logger.warn("[TV Discovery] Endpoint failed", {
+              baseUrl,
+              error: getErrorMessage(error),
+            });
             lastError = error;
           }
         }
 
         const reason = getErrorMessage(lastError ?? new Error("All connection attempts failed"));
         setConnectionError(reason);
+        logger.error("[TV Discovery] All connection attempts failed", lastError, {
+          reason,
+          candidateUrls,
+        });
         return false;
       } finally {
         setIsConnecting(false);
@@ -238,6 +325,14 @@ export default function TVSettingsScreen() {
   const connectToDiscoveredDevice = useCallback(
     async (device: DiscoveredPeer, options?: { fromAuto?: boolean }) => {
       const candidateUrls = buildDiscoveredConnectUrls(device);
+      logger.info("[TV Discovery] Connect to discovered device", {
+        name: device.name,
+        host: device.host,
+        hosts: device.hosts,
+        port: device.port,
+        fromAuto: options?.fromAuto ?? false,
+        candidateUrls,
+      });
       return connectWithCandidates(candidateUrls, device.name, options);
     },
     [connectWithCandidates]
@@ -246,13 +341,19 @@ export default function TVSettingsScreen() {
   const connectToManualInput = useCallback(async () => {
     if (candidates.length === 0) {
       setConnectionError("Enter desktop host or IP first.");
+      logger.warn("[TV Discovery] Manual connect attempted with empty input");
       return;
     }
 
+    logger.info("[TV Discovery] Manual connect requested", {
+      input,
+      candidates,
+    });
     await connectWithCandidates(candidates, "Desktop");
-  }, [candidates, connectWithCandidates]);
+  }, [candidates, connectWithCandidates, input]);
 
   const triggerSmartReconnect = useCallback(() => {
+    logger.info("[TV Discovery] Smart reconnect triggered");
     disconnect();
     setConnectionError(null);
     setInput("");
@@ -261,12 +362,14 @@ export default function TVSettingsScreen() {
   }, [disconnect]);
 
   const handleDisconnect = useCallback(() => {
+    logger.info("[TV Discovery] Disconnect triggered");
     disconnect();
     setConnectionError(null);
     setAutoConnectBlockedPeerKey(null);
   }, [disconnect]);
 
   const handleRetryDiscovery = useCallback(() => {
+    logger.info("[TV Discovery] Retry discovery triggered");
     setConnectionError(null);
     setScanAttempt((prev) => prev + 1);
   }, []);
@@ -301,6 +404,7 @@ export default function TVSettingsScreen() {
     let cancelled = false;
 
     const beginScanning = async () => {
+      logger.info("[TV Discovery] Begin scanning", { scanAttempt });
       setIsScanning(true);
       setConnectionError(null);
       setDiscoveredDevices([]);
@@ -312,12 +416,21 @@ export default function TVSettingsScreen() {
         if (!granted) {
           setConnectionError("Nearby devices permission is required for discovery.");
           setIsScanning(false);
+          logger.warn("[TV Discovery] Scan blocked by missing permission");
           return;
         }
 
+        logger.info("[TV Discovery] Permissions granted, starting mDNS scan");
         startScanning({
           onPeerFound: (peer) => {
             if (cancelled) return;
+            logger.info("[TV Discovery] Peer found", {
+              name: peer.name,
+              host: peer.host,
+              hosts: peer.hosts,
+              port: peer.port,
+              videoCount: peer.videoCount,
+            });
             setDiscoveredDevices((prev) => {
               const existing = prev.find((item) => item.name === peer.name);
               if (existing) {
@@ -329,18 +442,21 @@ export default function TVSettingsScreen() {
           },
           onPeerLost: (name) => {
             if (cancelled) return;
+            logger.info("[TV Discovery] Peer lost", { name });
             setDiscoveredDevices((prev) => prev.filter((item) => item.name !== name));
           },
           onError: (error) => {
             if (cancelled) return;
             setConnectionError(`Discovery error: ${getErrorMessage(error)}`);
             setIsScanning(false);
+            logger.error("[TV Discovery] Scan callback error", error);
           },
         });
       } catch (error) {
         if (!cancelled) {
           setConnectionError(`Discovery failed: ${getErrorMessage(error)}`);
           setIsScanning(false);
+          logger.error("[TV Discovery] Failed to begin scan", error);
         }
       }
     };
@@ -352,6 +468,7 @@ export default function TVSettingsScreen() {
       clearAutoConnectTimers();
       stopScanning();
       setIsScanning(false);
+      logger.info("[TV Discovery] Stopped scanning (cleanup)", { scanAttempt });
     };
   }, [clearAutoConnectTimers, scanAttempt]);
 
@@ -386,6 +503,11 @@ export default function TVSettingsScreen() {
     }
 
     let cancelled = false;
+    logger.info("[TV Discovery] Auto-connect scheduled", {
+      peer: singleDiscoveredDevice.name,
+      peerKey: singleDiscoveredPeerKey,
+      delaySeconds: AUTO_CONNECT_DELAY_SECONDS,
+    });
     setAutoConnectCountdown(AUTO_CONNECT_DELAY_SECONDS);
 
     autoConnectIntervalRef.current = setInterval(() => {
@@ -400,12 +522,25 @@ export default function TVSettingsScreen() {
         if (cancelled) return;
 
         clearAutoConnectTimers();
+        logger.info("[TV Discovery] Auto-connect attempting", {
+          peer: singleDiscoveredDevice.name,
+          peerKey: singleDiscoveredPeerKey,
+        });
         const connected = await connectToDiscoveredDevice(singleDiscoveredDevice, {
           fromAuto: true,
         });
 
         if (!connected && !cancelled) {
           setAutoConnectBlockedPeerKey(singleDiscoveredPeerKey);
+          logger.warn("[TV Discovery] Auto-connect failed; peer blocked for this cycle", {
+            peer: singleDiscoveredDevice.name,
+            peerKey: singleDiscoveredPeerKey,
+          });
+        } else if (connected && !cancelled) {
+          logger.info("[TV Discovery] Auto-connect succeeded", {
+            peer: singleDiscoveredDevice.name,
+            peerKey: singleDiscoveredPeerKey,
+          });
         }
 
         if (!cancelled) {
@@ -435,7 +570,27 @@ export default function TVSettingsScreen() {
     if (singleDiscoveredPeerKey) {
       setAutoConnectBlockedPeerKey(singleDiscoveredPeerKey);
     }
+    logger.info("[TV Discovery] Auto-connect cancelled by user", {
+      peerKey: singleDiscoveredPeerKey,
+    });
   }, [clearAutoConnectTimers, singleDiscoveredPeerKey]);
+
+  const openLogViewer = useCallback(() => {
+    setLogPage(0);
+    setIsLogViewerOpen(true);
+    logger.info("[TV Settings] Opened log viewer");
+  }, []);
+
+  const closeLogViewer = useCallback(() => {
+    setIsLogViewerOpen(false);
+    logger.info("[TV Settings] Closed log viewer");
+  }, []);
+
+  const clearLogs = useCallback(() => {
+    logger.clearEntries();
+    logger.info("[TV Settings] Cleared app logs");
+    setLogPage(0);
+  }, []);
 
   const connectionLabel = isConnected
     ? `Connected to ${serverName ?? serverUrl}`
@@ -445,9 +600,14 @@ export default function TVSettingsScreen() {
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <View style={styles.topBar}>
         <Text style={styles.title}>Settings</Text>
-        <TVFocusPressable style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Back</Text>
-        </TVFocusPressable>
+        <View style={styles.topActions}>
+          <TVFocusPressable style={styles.logButton} onPress={openLogViewer}>
+            <Logs size={20} color="#fffef2" />
+          </TVFocusPressable>
+          <TVFocusPressable style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backText}>Back</Text>
+          </TVFocusPressable>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -584,6 +744,71 @@ export default function TVSettingsScreen() {
           <Text style={styles.candidatesText}>App is up to date</Text>
         ) : null}
       </View>
+
+      {isLogViewerOpen ? (
+        <View style={styles.logOverlay}>
+          <View style={styles.logPanel}>
+            <View style={styles.logHeader}>
+              <Text style={styles.logTitle}>App Logs</Text>
+              <Text style={styles.logMeta}>
+                Page {clampedLogPage + 1}/{totalLogPages} · {logEntries.length} entries
+              </Text>
+            </View>
+
+            <View style={styles.logActions}>
+              <TVFocusPressable
+                style={[styles.logActionButton, !hasOlderLogs && styles.logActionDisabled]}
+                disabled={!hasOlderLogs}
+                onPress={() => setLogPage((prev) => prev + 1)}
+              >
+                <Text style={styles.logActionText}>Older</Text>
+              </TVFocusPressable>
+
+              <TVFocusPressable
+                style={[styles.logActionButton, !hasNewerLogs && styles.logActionDisabled]}
+                disabled={!hasNewerLogs}
+                onPress={() => setLogPage((prev) => Math.max(0, prev - 1))}
+              >
+                <Text style={styles.logActionText}>Newer</Text>
+              </TVFocusPressable>
+
+              <TVFocusPressable style={styles.logActionButton} onPress={clearLogs}>
+                <Text style={styles.logActionText}>Clear</Text>
+              </TVFocusPressable>
+
+              <TVFocusPressable
+                style={styles.logActionButton}
+                onPress={closeLogViewer}
+                hasTVPreferredFocus
+              >
+                <Text style={styles.logActionText}>Close</Text>
+              </TVFocusPressable>
+            </View>
+
+            <View style={styles.logBody}>
+              {pagedLogs.length === 0 ? (
+                <Text style={styles.logEmptyText}>No logs yet</Text>
+              ) : (
+                pagedLogs.map((entry) => (
+                  <Text
+                    key={entry.id}
+                    style={[
+                      styles.logLine,
+                      entry.level === "warn" && styles.logLineWarn,
+                      entry.level === "error" && styles.logLineError,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    [{entry.timestamp}] [{entry.level.toUpperCase()}] {entry.message}
+                    {entry.context ? ` ${entry.context}` : ""}
+                    {entry.error ? ` | ${entry.error}` : ""}
+                  </Text>
+                ))
+              )}
+            </View>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -601,10 +826,25 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
+  topActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   title: {
     color: "#fff4cc",
     fontSize: 44,
     fontWeight: "900",
+  },
+  logButton: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#8ec5ff",
+    backgroundColor: "#2d7ff9",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   backButton: {
     borderRadius: 12,
@@ -751,5 +991,84 @@ const styles = StyleSheet.create({
     color: "#dbeafe",
     fontSize: 15,
     fontWeight: "700",
+  },
+  logOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    paddingHorizontal: 28,
+    paddingVertical: 22,
+    justifyContent: "center",
+  },
+  logPanel: {
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#8ec5ff",
+    backgroundColor: "#0f1b3a",
+    padding: 16,
+    gap: 12,
+  },
+  logHeader: {
+    gap: 4,
+  },
+  logTitle: {
+    color: "#fff4cc",
+    fontSize: 28,
+    fontWeight: "900",
+  },
+  logMeta: {
+    color: "#bfdbfe",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  logActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  logActionButton: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#ffd93d",
+    backgroundColor: "#ff8a00",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  logActionDisabled: {
+    opacity: 0.45,
+  },
+  logActionText: {
+    color: "#fffef2",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  logBody: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#020817",
+    minHeight: 420,
+    maxHeight: 420,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  logEmptyText: {
+    color: "#94a3b8",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  logLine: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  logLineWarn: {
+    color: "#fde68a",
+  },
+  logLineError: {
+    color: "#fca5a5",
   },
 });

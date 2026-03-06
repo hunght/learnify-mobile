@@ -2,6 +2,7 @@ import Zeroconf from "react-native-zeroconf";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import type { DiscoveredPeer } from "../../types";
+import { logger } from "../logger";
 
 const SERVICE_TYPE = "learnify";
 const ANDROID_ZEROCONF_IMPL = "DNSSD";
@@ -29,12 +30,23 @@ const zeroconfExtended = zeroconf as unknown as {
 let isInitialized = false;
 
 const log = (message: string, data?: unknown) => {
-  const timestamp = new Date().toISOString().split("T")[1].slice(0, 12);
-  if (data) {
-    console.log(`[${timestamp}] [mDNS] ${message}`, JSON.stringify(data, null, 2));
-  } else {
-    console.log(`[${timestamp}] [mDNS] ${message}`);
+  const prefix = `[mDNS] ${message}`;
+  if (data === undefined) {
+    logger.info(prefix);
+    return;
   }
+
+  if (data instanceof Error) {
+    logger.error(prefix, data);
+    return;
+  }
+
+  if (typeof data === "object" && data !== null) {
+    logger.info(prefix, data as Record<string, unknown>);
+    return;
+  }
+
+  logger.info(prefix, { value: String(data) });
 };
 
 function getZeroconfImplType(): string | undefined {

@@ -4,7 +4,21 @@ interface LogContext {
   [key: string]: unknown;
 }
 
+export interface AppLogEntry {
+  id: number;
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  context?: string;
+  error?: string;
+}
+
 const isDev = __DEV__;
+const MAX_LOG_ENTRIES = 800;
+let logEntries: AppLogEntry[] = [];
+let logCounter = 0;
+
+const subscribers = new Set<(entries: AppLogEntry[]) => void>();
 
 function formatMessage(level: LogLevel, message: string, context?: LogContext) {
   const timestamp = new Date().toISOString();
@@ -12,26 +26,73 @@ function formatMessage(level: LogLevel, message: string, context?: LogContext) {
   return `[${timestamp}] [${level.toUpperCase()}] ${message}${contextStr}`;
 }
 
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function toErrorString(error: Error | unknown): string {
+  if (error instanceof Error) {
+    if (error.stack && error.stack.trim().length > 0) {
+      return error.stack;
+    }
+    return `${error.name}: ${error.message}`;
+  }
+  return safeStringify(error);
+}
+
+function appendLog(
+  level: LogLevel,
+  message: string,
+  context?: LogContext,
+  error?: Error | unknown
+) {
+  const entry: AppLogEntry = {
+    id: ++logCounter,
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+    context: context ? safeStringify(context) : undefined,
+    error: error != null ? toErrorString(error) : undefined,
+  };
+
+  logEntries = [...logEntries, entry];
+  if (logEntries.length > MAX_LOG_ENTRIES) {
+    logEntries = logEntries.slice(logEntries.length - MAX_LOG_ENTRIES);
+  }
+
+  for (const subscriber of subscribers) {
+    subscriber([...logEntries]);
+  }
+}
+
 export const logger = {
   debug(message: string, context?: LogContext) {
+    appendLog("debug", message, context);
     if (isDev) {
       console.debug(formatMessage("debug", message, context));
     }
   },
 
   info(message: string, context?: LogContext) {
+    appendLog("info", message, context);
     if (isDev) {
       console.info(formatMessage("info", message, context));
     }
   },
 
   warn(message: string, context?: LogContext) {
+    appendLog("warn", message, context);
     if (isDev) {
       console.warn(formatMessage("warn", message, context));
     }
   },
 
   error(message: string, error?: Error | unknown, context?: LogContext) {
+    appendLog("error", message, context, error);
     if (isDev) {
       console.error(formatMessage("error", message, context), error);
     }
@@ -48,4 +109,23 @@ export const logger = {
   setTag(_key: string, _value: string) {},
 
   setContext(_name: string, _context: LogContext) {},
+
+  getEntries(): AppLogEntry[] {
+    return [...logEntries];
+  },
+
+  clearEntries() {
+    logEntries = [];
+    for (const subscriber of subscribers) {
+      subscriber([]);
+    }
+  },
+
+  subscribe(listener: (entries: AppLogEntry[]) => void): () => void {
+    subscribers.add(listener);
+    listener([...logEntries]);
+    return () => {
+      subscribers.delete(listener);
+    };
+  },
 };
