@@ -5,8 +5,8 @@ import { View,
   StyleSheet,
   Text,
   Alert,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLibraryStore } from "../../stores/library";
 import { useSharingStore } from "../../stores/sharing";
@@ -272,9 +272,9 @@ export default function ShareScreen() {
           <ModeSelector selected={selectedMode} onSelect={handleModeSelect} />
 
           <View style={styles.footer}>
-            <TVPressable style={styles.continueButton} onPress={handleContinue}>
+            <Pressable style={styles.continueButton} onPress={handleContinue}>
               <Text style={styles.continueButtonText}>Continue</Text>
-            </TVPressable>
+            </Pressable>
           </View>
         </View>
       </SafeAreaView>
@@ -287,9 +287,9 @@ export default function ShareScreen() {
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <TVPressable onPress={handleBack} style={styles.backButton}>
+            <Pressable onPress={handleBack} style={styles.backButton}>
               <Text style={styles.backText}>‹ Back</Text>
-            </TVPressable>
+            </Pressable>
             <Text style={styles.headerTitle}>Share Videos</Text>
           </View>
 
@@ -311,7 +311,7 @@ export default function ShareScreen() {
               />
 
               <View style={styles.actionFooter}>
-                <TVPressable
+                <Pressable
                   style={[
                     styles.startButton,
                     selectedShareIds.size === 0 && styles.startButtonDisabled,
@@ -320,7 +320,7 @@ export default function ShareScreen() {
                   disabled={selectedShareIds.size === 0}
                 >
                   <Text style={styles.startButtonText}>Start Sharing</Text>
-                </TVPressable>
+                </Pressable>
               </View>
             </>
           )}
@@ -335,9 +335,9 @@ export default function ShareScreen() {
       <View style={styles.content}>
         {!selectedPeer && (
           <View style={styles.header}>
-            <TVPressable onPress={handleBack} style={styles.backButton}>
+            <Pressable onPress={handleBack} style={styles.backButton}>
               <Text style={styles.backText}>‹ Back</Text>
-            </TVPressable>
+            </Pressable>
             <Text style={styles.headerTitle}>Receive Videos</Text>
           </View>
         )}

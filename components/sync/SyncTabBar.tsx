@@ -1,11 +1,8 @@
-import {
-  useState } from "react";
 import { View,
   Text,
   StyleSheet,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import type { BrowseTab } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
@@ -15,9 +12,6 @@ interface SyncTabBarProps {
 }
 
 export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
-  const isTv = false;
-  const [focusedTab, setFocusedTab] = useState<BrowseTab | null>(null);
-
   const tabs: { key: BrowseTab; label: string }[] = [
     { key: "mylists", label: "My Lists" },
     { key: "channels", label: "Channels" },
@@ -29,26 +23,20 @@ export function SyncTabBar({ activeTab, onTabChange }: SyncTabBarProps) {
     <View style={styles.container}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
-        const isFocused = focusedTab === tab.key;
         return (
-          <TVPressable
+          <Pressable
             key={tab.key}
             style={({ pressed }) => [
               styles.tab,
               isActive && styles.activeTab,
-              isTv && isFocused && styles.focusedTab,
               pressed && styles.tabPressed,
             ]}
             onPress={() => onTabChange(tab.key)}
-            focusable={isTv}
-            hasTVPreferredFocus={isTv && isActive}
-            onFocus={() => setFocusedTab(tab.key)}
-            onBlur={() => setFocusedTab(null)}
           >
             <Text style={[styles.tabText, isActive && styles.activeTabText]}>
               {tab.label}
             </Text>
-          </TVPressable>
+          </Pressable>
         );
       })}
     </View>
@@ -74,11 +62,6 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     borderBottomColor: colors.primary,
-  },
-  focusedTab: {
-    borderBottomColor: colors.ring,
-    backgroundColor: colors.cardHover,
-    borderRadius: radius.md,
   },
   tabPressed: {
     opacity: 0.9,

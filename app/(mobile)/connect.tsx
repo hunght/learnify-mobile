@@ -8,10 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Platform,
+  Pressable,
+  TextInput,
 } from "react-native";
-import { TVTextInput } from "@/components/ui/TVTextInput";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../../stores/connection";
@@ -119,7 +118,6 @@ export default function ConnectScreen() {
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
   const [discoveredDevices, setDiscoveredDevices] = useState<DiscoveredPeer[]>([]);
   const [isScanning, setIsScanning] = useState(false);
-  const isTv = false;
 
   const { setServerUrl, setServerName } = useConnectionStore();
   const { addVideo } = useLibraryStore();
@@ -345,12 +343,11 @@ export default function ConnectScreen() {
                   )}
                 </View>
                 {discoveredDevices.map((device) => (
-                  <TVPressable
+                  <Pressable
                     key={device.name}
                     style={styles.deviceItem}
                     onPress={() => handleConnectToDevice(device)}
                     disabled={isConnecting}
-                    focusable={isTv}
                   >
                     <View style={styles.deviceIcon}>
                       <Text style={styles.deviceIconText}>💻</Text>
@@ -366,7 +363,7 @@ export default function ConnectScreen() {
                     ) : (
                       <Text style={styles.connectArrow}>›</Text>
                     )}
-                  </TVPressable>
+                  </Pressable>
                 ))}
               </View>
             )}
@@ -388,7 +385,7 @@ export default function ConnectScreen() {
             </Text>
 
             <View style={styles.inputContainer}>
-              <TVTextInput
+              <TextInput
                 style={styles.input}
                 placeholder="192.168.1.100 or 192.168.1.100:53318"
                 placeholderTextColor="#666"
@@ -400,18 +397,17 @@ export default function ConnectScreen() {
               />
             </View>
 
-            <TVPressable
+            <Pressable
               style={[styles.connectButton, isConnecting && styles.connectButtonDisabled]}
               onPress={handleConnect}
               disabled={isConnecting}
-              focusable={isTv}
             >
               {isConnecting ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.connectButtonText}>Connect</Text>
               )}
-            </TVPressable>
+            </Pressable>
 
             {discoveredDevices.length === 0 && (
               <View style={styles.helpSection}>
@@ -445,13 +441,12 @@ export default function ConnectScreen() {
               keyExtractor={(item) => item.id}
               style={styles.videoList}
               renderItem={({ item }) => (
-                <TVPressable
+                <Pressable
                   style={[
                     styles.videoItem,
                     selectedVideos.has(item.id) && styles.videoItemSelected,
                   ]}
                   onPress={() => toggleVideoSelection(item.id)}
-                  focusable={isTv}
                 >
                   <View style={styles.checkbox}>
                     {selectedVideos.has(item.id) && (
@@ -467,24 +462,23 @@ export default function ConnectScreen() {
                       {formatDuration(item.duration)} • {formatFileSize(item.fileSize)}
                     </Text>
                   </View>
-                </TVPressable>
+                </Pressable>
               )}
             />
             <View style={styles.footer}>
               <Text style={styles.selectedCount}>
                 {selectedVideos.size} selected
               </Text>
-              <TVPressable
+              <Pressable
                 style={[
                   styles.downloadButton,
                   selectedVideos.size === 0 && styles.downloadButtonDisabled,
                 ]}
                 onPress={handleDownloadSelected}
                 disabled={selectedVideos.size === 0}
-                focusable={isTv}
               >
                 <Text style={styles.downloadButtonText}>Download Selected</Text>
-              </TVPressable>
+              </Pressable>
             </View>
           </>
         )}

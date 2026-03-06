@@ -9,9 +9,8 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLibraryStore } from "../../../stores/library";
@@ -40,7 +39,6 @@ import { api } from "../../../services/api";
 import { getVideoLocalPath, videoExistsLocally } from "../../../services/downloader";
 
 export default function HomeScreen() {
-  const isTv = false;
   const serverUrl = useConnectionStore((s) => s.serverUrl);
   const isConnected = !!serverUrl;
 
@@ -648,13 +646,9 @@ export default function HomeScreen() {
             Connect to your LearnifyTube desktop app to browse and sync videos
           </Text>
           <Link href="/(mobile)/(tabs)/settings" asChild>
-            <TVPressable
-              style={styles.connectButton}
-              focusable={isTv}
-              hasTVPreferredFocus={isTv}
-            >
+            <Pressable style={styles.connectButton}>
               <Text style={styles.connectButtonText}>Go to Settings</Text>
-            </TVPressable>
+            </Pressable>
           </Link>
         </View>
       </SafeAreaView>
@@ -789,14 +783,12 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header with back button */}
         <View style={styles.videoHeader}>
-          <TVPressable
+          <Pressable
             style={styles.backButton}
             onPress={handleBackPress}
-            focusable={isTv}
-            hasTVPreferredFocus={isTv}
           >
             <ArrowLeft size={18} color={colors.foreground} />
-          </TVPressable>
+          </Pressable>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {currentTitle}
@@ -809,14 +801,13 @@ export default function HomeScreen() {
           </View>
           {/* Save Offline Button */}
           {!isChannelDetail && currentVideos.length > 0 && serverUrl && (
-            <TVPressable
+            <Pressable
               style={[
                 styles.saveOfflineButton,
                 isSaveActionDone && styles.saveOfflineButtonDisabled,
               ]}
               onPress={handleSavePlaylistOffline}
               disabled={isSaveActionDone}
-              focusable={isTv}
             >
               <Text style={styles.saveOfflineButtonText}>
                 {isSaveActionDone
@@ -825,7 +816,7 @@ export default function HomeScreen() {
                     ? "Save Playlist"
                     : "Save All"}
               </Text>
-            </TVPressable>
+            </Pressable>
           )}
         </View>
 
@@ -847,43 +838,40 @@ export default function HomeScreen() {
         {!isChannelDetail && (syncableCount > 0 || playableCount > 0) && (
           <View style={styles.toolbar}>
             {syncableCount > 0 && (
-              <TVPressable
+              <Pressable
                 style={styles.toolbarButton}
                 onPress={
                   selectedVideoIds.size > 0 ? clearVideoSelection : selectAllVideos
                 }
-                focusable={isTv}
               >
                 <Text style={styles.toolbarButtonText}>
                   {selectedVideoIds.size > 0
                     ? `Deselect (${selectedVideoIds.size})`
                     : `Select All (${syncableCount})`}
                 </Text>
-              </TVPressable>
+              </Pressable>
             )}
             {selectedVideoIds.size > 0 && (
-              <TVPressable
+              <Pressable
                 style={styles.syncAllButton}
                 onPress={handleSyncSelected}
-                focusable={isTv}
               >
                 <Text style={styles.syncAllButtonText}>
                   Sync {selectedVideoIds.size} video
                   {selectedVideoIds.size !== 1 ? "s" : ""}
                 </Text>
-              </TVPressable>
+              </Pressable>
             )}
             {playableCount > 0 && selectedVideoIds.size === 0 && (
-              <TVPressable
+              <Pressable
                 style={styles.playAllButton}
                 onPress={handlePlayAll}
-                focusable={isTv}
               >
                 <Play size={14} color={colors.foreground} fill={colors.foreground} />
                 <Text style={styles.playAllButtonText}>
                   Play All ({playableCount})
                 </Text>
-              </TVPressable>
+              </Pressable>
             )}
           </View>
         )}
@@ -920,7 +908,6 @@ export default function HomeScreen() {
                     : { type: "none" }
                 }
                 onPress={() => handleSubscriptionVideoPress(item)}
-                hasTVPreferredFocus={isTv && index === 0}
               />
             )}
           />
@@ -992,7 +979,6 @@ export default function HomeScreen() {
                       : { type: "none" }
                   }
                   onPress={() => handleSubscriptionVideoPress(item)}
-                  hasTVPreferredFocus={isTv && index === 0}
                 />
               )}
               refreshing={isLoadingSubscriptions}

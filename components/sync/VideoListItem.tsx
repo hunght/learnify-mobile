@@ -1,5 +1,4 @@
-import { View, Text, Image, StyleSheet } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
+import { View, Text, Image, StyleSheet, Pressable } from "react-native";
 import type { RemoteVideoWithStatus } from "../../types";
 import { DownloadStatusBadge } from "./DownloadStatusBadge";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
@@ -33,7 +32,7 @@ export function VideoListItem({
   const canPlay = video.downloadStatus === "completed" || isSyncedToMobile;
 
   return (
-    <TVPressable
+    <Pressable
       style={[styles.container, isSelected && styles.selected]}
       onPress={onPress}
     >
@@ -74,16 +73,16 @@ export function VideoListItem({
             progress={video.downloadProgress}
           />
           {canPlay && onPlayPress && (
-            <TVPressable style={styles.playButton} onPress={onPlayPress}>
+            <Pressable style={styles.playButton} onPress={onPlayPress}>
               <Text style={styles.playButtonText}>
                 {isSyncedToMobile ? "Play" : "Stream"}
               </Text>
-            </TVPressable>
+            </Pressable>
           )}
           {canSync && onSyncPress && (
-            <TVPressable style={styles.syncButton} onPress={onSyncPress}>
+            <Pressable style={styles.syncButton} onPress={onSyncPress}>
               <Text style={styles.syncButtonText}>Sync</Text>
-            </TVPressable>
+            </Pressable>
           )}
         </View>
       </View>
@@ -93,7 +92,7 @@ export function VideoListItem({
           <Check size={14} color={colors.foreground} strokeWidth={3} />
         </View>
       )}
-    </TVPressable>
+    </Pressable>
   );
 }
 

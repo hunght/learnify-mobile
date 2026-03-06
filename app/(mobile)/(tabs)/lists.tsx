@@ -10,9 +10,8 @@ import {
   StyleSheet,
   ScrollView,
   Image,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { Link, useRouter, type Href } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -67,8 +66,6 @@ interface SavedPlaylistCardProps {
   onOpenPress: () => void;
   onResumePress?: () => void;
   resumeLabel?: string;
-  isTv: boolean;
-  hasTVPreferredFocus?: boolean;
 }
 
 function SavedPlaylistCard({
@@ -76,22 +73,10 @@ function SavedPlaylistCard({
   onOpenPress,
   onResumePress,
   resumeLabel,
-  isTv,
-  hasTVPreferredFocus = false,
 }: SavedPlaylistCardProps) {
-  const [isFocused, setIsFocused] = useState(false);
-  const [isResumeFocused, setIsResumeFocused] = useState(false);
-
   return (
-    <View style={[styles.playlistCardShell, isTv && styles.playlistCardShellTv]}>
-      <TVPressable
-        style={[styles.playlistCard, isTv && isFocused && styles.playlistCardFocused]}
-        onPress={onOpenPress}
-        focusable={isTv}
-        hasTVPreferredFocus={hasTVPreferredFocus}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-      >
+    <View style={styles.playlistCardShell}>
+      <Pressable style={styles.playlistCard} onPress={onOpenPress}>
         <View style={styles.playlistThumbnail}>
           {playlist.thumbnailUrl ? (
             <Image
@@ -126,24 +111,14 @@ function SavedPlaylistCard({
             {playlist.downloadedCount}/{playlist.totalCount}
           </Text>
         </View>
-      </TVPressable>
+      </Pressable>
 
       {onResumePress && resumeLabel ? (
-        <TVPressable
-          style={[
-            styles.playlistResumeButton,
-            isTv && styles.playlistResumeButtonTv,
-            isTv && isResumeFocused && styles.playlistResumeButtonFocused,
-          ]}
-          onPress={onResumePress}
-          focusable={isTv}
-          onFocus={() => setIsResumeFocused(true)}
-          onBlur={() => setIsResumeFocused(false)}
-        >
+        <Pressable style={styles.playlistResumeButton} onPress={onResumePress}>
           <Text style={styles.playlistResumeText} numberOfLines={1}>
             {resumeLabel}
           </Text>
-        </TVPressable>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -151,7 +126,6 @@ function SavedPlaylistCard({
 
 export default function ListsScreen() {
   const router = useRouter();
-  const isTv = false;
 
   const videos = useLibraryStore((state) => state.videos);
   const downloadQueue = useDownloadStore((state) => state.queue);
@@ -306,8 +280,6 @@ export default function ListsScreen() {
           resumeInfo ? () => handleResumePlaylistPress(playlist.id) : undefined
         }
         resumeLabel={resumeInfo?.label}
-        isTv={isTv}
-        hasTVPreferredFocus={isTv && index === 0}
       />
     );
   };
@@ -322,9 +294,9 @@ export default function ListsScreen() {
             Sync videos from your LearnifyTube desktop app
           </Text>
           <Link href="/(mobile)/(tabs)/settings" asChild>
-            <TVPressable style={styles.syncButton} focusable={isTv} hasTVPreferredFocus={isTv}>
+            <Pressable style={styles.syncButton}>
               <Text style={styles.syncButtonText}>Sync Videos</Text>
-            </TVPressable>
+            </Pressable>
           </Link>
         </View>
       ) : (
@@ -332,23 +304,15 @@ export default function ListsScreen() {
           {savedPlaylists.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Saved Playlists</Text>
-              {isTv ? (
-                <View style={styles.playlistsGrid}>
-                  {savedPlaylists.map((playlist, index) =>
-                    renderPlaylistCard(playlist, index)
-                  )}
-                </View>
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.playlistsRow}
-                >
-                  {savedPlaylists.map((playlist, index) =>
-                    renderPlaylistCard(playlist, index)
-                  )}
-                </ScrollView>
-              )}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.playlistsRow}
+              >
+                {savedPlaylists.map((playlist, index) =>
+                  renderPlaylistCard(playlist, index)
+                )}
+              </ScrollView>
             </View>
           )}
 
@@ -377,8 +341,8 @@ export default function ListsScreen() {
           </View>
 
           {videos.length > 0 && (
-            <View style={[styles.videosGrid, isTv && styles.videosGridTv]}>
-              {videos.map((video, index) => {
+            <View style={styles.videosGrid}>
+              {videos.map((video) => {
                 const resumeSeconds = getVideoResumeSeconds(video.id, video.duration);
                 const playerHref =
                   resumeSeconds > 0
@@ -393,11 +357,7 @@ export default function ListsScreen() {
                     resumeLabel={
                       resumeSeconds > 0 ? createResumeLabel(resumeSeconds) : undefined
                     }
-                    hasTVPreferredFocus={isTv && savedPlaylists.length === 0 && index === 0}
-                    style={[
-                      styles.downloadedVideoCard,
-                      isTv && styles.downloadedVideoCardTv,
-                    ]}
+                    style={styles.downloadedVideoCard}
                   />
                 );
               })}
@@ -434,20 +394,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 4,
     gap: spacing.sm + 4,
   },
-  playlistsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: spacing.sm + 4,
-    justifyContent: "space-between",
-  },
   playlistCardShell: {
     width: 150,
     marginRight: spacing.sm + 4,
-  },
-  playlistCardShellTv: {
-    width: "31.5%",
-    marginRight: 0,
-    marginBottom: spacing.md,
   },
   playlistCard: {
     backgroundColor: colors.card,
@@ -455,15 +404,6 @@ const styles = StyleSheet.create({
     padding: spacing.sm + 4,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  playlistCardFocused: {
-    borderColor: colors.ring,
-    backgroundColor: colors.cardHover,
-    shadowColor: colors.ring,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   playlistThumbnail: {
     width: "100%",
@@ -524,13 +464,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     alignItems: "center",
   },
-  playlistResumeButtonTv: {
-    paddingVertical: 10,
-  },
-  playlistResumeButtonFocused: {
-    borderColor: colors.ring,
-    backgroundColor: `${colors.primary}33`,
-  },
   playlistResumeText: {
     color: colors.primary,
     fontSize: fontSize.xs,
@@ -573,20 +506,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     justifyContent: "space-between",
   },
-  videosGridTv: {
-    paddingHorizontal: spacing.md - 2,
-  },
   downloadedVideoCard: {
     flex: 0,
     width: "48%",
     maxWidth: "48%",
     margin: 0,
     marginBottom: spacing.sm + 2,
-  },
-  downloadedVideoCardTv: {
-    width: "31.5%",
-    maxWidth: "31.5%",
-    marginBottom: spacing.md,
   },
   emptyState: {
     flex: 1,

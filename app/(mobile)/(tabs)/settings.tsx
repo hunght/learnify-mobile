@@ -15,9 +15,9 @@ import {
   Alert,
   Platform,
   PermissionsAndroid,
+  Pressable,
+  TextInput,
 } from "react-native";
-import { TVTextInput } from "@/components/ui/TVTextInput";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSettingsStore, LANGUAGES } from "../../../stores/settings";
 import { useConnectionStore } from "../../../stores/connection";
@@ -118,10 +118,6 @@ function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
   return Array.from(new Set(urls));
 }
 
-function isPressableFocused(state: unknown): boolean {
-  return Boolean((state as { focused?: boolean }).focused);
-}
-
 function getAndroidApiLevel(): number {
   if (Platform.OS !== "android") return 0;
   if (typeof Platform.Version === "number") return Platform.Version;
@@ -193,8 +189,6 @@ export default function SettingsScreen() {
   const [scanDebugDetails, setScanDebugDetails] = useState<string | null>(null);
   const [scanAttempt, setScanAttempt] = useState(0);
   const [showManualInput, setShowManualInput] = useState(false);
-  const [isManualInputFocused, setIsManualInputFocused] = useState(false);
-  const isTv = false;
   const discoveredCountRef = useRef(0);
 
   const selectedLang =
@@ -451,17 +445,15 @@ export default function SettingsScreen() {
                   <Text style={styles.connectedUrl}>{serverUrl}</Text>
                 </View>
               </View>
-              <TVPressable
+              <Pressable
                 style={(state) => [
                   styles.disconnectButton,
                   state.pressed && styles.pressablePressed,
-                  isTv && isPressableFocused(state) && styles.tvFocusRing,
                 ]}
                 onPress={handleDisconnect}
-                focusable={isTv}
               >
                 <Text style={styles.disconnectButtonText}>Disconnect</Text>
-              </TVPressable>
+              </Pressable>
             </View>
           ) : (
             /* Disconnected state — show discovery + manual */
@@ -476,16 +468,14 @@ export default function SettingsScreen() {
                     )}
                   </View>
                   {discoveredDevices.map((device) => (
-                    <TVPressable
+                    <Pressable
                       key={device.name}
                       style={(state) => [
                         styles.deviceItem,
                         state.pressed && styles.pressablePressed,
-                        isTv && isPressableFocused(state) && styles.tvFocusRing,
                       ]}
                       onPress={() => handleConnectToDevice(device)}
                       disabled={isConnecting}
-                      focusable={isTv}
                     >
                       <View style={styles.deviceIcon}>
                         <Text style={styles.deviceIconText}>💻</Text>
@@ -501,7 +491,7 @@ export default function SettingsScreen() {
                       ) : (
                         <Text style={styles.connectArrow}>›</Text>
                       )}
-                    </TVPressable>
+                    </Pressable>
                   ))}
                 </View>
               )}
@@ -523,30 +513,26 @@ export default function SettingsScreen() {
                   {scanDebugDetails ? (
                     <Text style={styles.scanErrorDebug}>{scanDebugDetails}</Text>
                   ) : null}
-                  <TVPressable
+                  <Pressable
                     style={(state) => [
                       styles.scanRetryButton,
                       state.pressed && styles.pressablePressed,
-                      isTv && isPressableFocused(state) && styles.tvFocusRing,
                     ]}
                     onPress={handleRetryScan}
-                    focusable={isTv}
                   >
                     <Text style={styles.scanRetryButtonText}>Retry Scan</Text>
-                  </TVPressable>
+                  </Pressable>
                 </View>
               )}
 
               {/* Manual connect toggle */}
               {!showManualInput ? (
-                <TVPressable
+                <Pressable
                   style={(state) => [
                     styles.manualConnectRow,
                     state.pressed && styles.pressablePressed,
-                    isTv && isPressableFocused(state) && styles.tvFocusRing,
                   ]}
                   onPress={() => setShowManualInput(true)}
-                  focusable={isTv}
                 >
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingLabel}>Connect Manually</Text>
@@ -555,17 +541,14 @@ export default function SettingsScreen() {
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
-                </TVPressable>
+                </Pressable>
               ) : (
                 <View style={styles.manualInputCard}>
                   <Text style={styles.manualInputLabel}>
                     Enter desktop IP address
                   </Text>
-                  <TVTextInput
-                    style={[
-                      styles.input,
-                      isTv && isManualInputFocused && styles.tvInputFocused,
-                    ]}
+                  <TextInput
+                    style={styles.input}
                     placeholder="192.168.1.100"
                     placeholderTextColor="#666"
                     value={ipAddress}
@@ -573,41 +556,35 @@ export default function SettingsScreen() {
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    onFocus={() => setIsManualInputFocused(true)}
-                    onBlur={() => setIsManualInputFocused(false)}
                   />
                   <View style={styles.manualInputActions}>
-                    <TVPressable
+                    <Pressable
                       style={(state) => [
                         styles.cancelButton,
                         state.pressed && styles.pressablePressed,
-                        isTv && isPressableFocused(state) && styles.tvFocusRing,
                       ]}
                       onPress={() => {
                         setShowManualInput(false);
                         setIpAddress("");
                       }}
-                      focusable={isTv}
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </TVPressable>
-                    <TVPressable
+                    </Pressable>
+                    <Pressable
                       style={(state) => [
                         styles.connectButton,
                         isConnecting && styles.connectButtonDisabled,
                         state.pressed && !isConnecting && styles.pressablePressed,
-                        isTv && isPressableFocused(state) && styles.tvFocusRing,
                       ]}
                       onPress={handleManualConnect}
                       disabled={isConnecting}
-                      focusable={isTv}
                     >
                       {isConnecting ? (
                         <ActivityIndicator color="#fff" size="small" />
                       ) : (
                         <Text style={styles.connectButtonText}>Connect</Text>
                       )}
-                    </TVPressable>
+                    </Pressable>
                   </View>
                 </View>
               )}
@@ -618,14 +595,12 @@ export default function SettingsScreen() {
         {/* Translation Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Translation</Text>
-          <TVPressable
+          <Pressable
             style={(state) => [
               styles.settingRow,
               state.pressed && styles.pressablePressed,
-              isTv && isPressableFocused(state) && styles.tvFocusRing,
             ]}
             onPress={() => setShowLangPicker(true)}
-            focusable={isTv}
           >
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Target Language</Text>
@@ -637,7 +612,7 @@ export default function SettingsScreen() {
               <Text style={styles.settingValueText}>{selectedLang.name}</Text>
               <Text style={styles.chevron}>›</Text>
             </View>
-          </TVPressable>
+          </Pressable>
         </View>
 
         {/* App Section */}
@@ -657,16 +632,14 @@ export default function SettingsScreen() {
           )}
 
           {updateAvailability?.hasUpdate && (
-            <TVPressable
+            <Pressable
               style={(state) => [
                 styles.settingRow,
                 isCheckingUpdate && styles.settingRowDisabled,
                 state.pressed && !isCheckingUpdate && styles.pressablePressed,
-                isTv && isPressableFocused(state) && styles.tvFocusRing,
               ]}
               onPress={handleUpdatePress}
               disabled={isCheckingUpdate}
-              focusable={isTv}
             >
               <View style={styles.settingInfo}>
                 <Text style={styles.settingLabel}>Update App</Text>
@@ -682,7 +655,7 @@ export default function SettingsScreen() {
                 </Text>
                 <Text style={styles.chevron}>›</Text>
               </View>
-            </TVPressable>
+            </Pressable>
           )}
 
           {!isLoadingUpdateAvailability &&
@@ -714,11 +687,9 @@ export default function SettingsScreen() {
         animationType="slide"
         onRequestClose={() => setShowLangPicker(false)}
       >
-        <TVPressable
+        <Pressable
           style={styles.modalOverlay}
           onPress={() => setShowLangPicker(false)}
-          focusable={false}
-          disableTVFocusStyle
         >
           <View
             style={styles.modalContent}
@@ -732,18 +703,16 @@ export default function SettingsScreen() {
               keyExtractor={(item) => item.code}
               style={styles.langList}
               renderItem={({ item }) => (
-                <TVPressable
+                <Pressable
                   style={(state) => [
                     styles.langItem,
                     item.code === targetLang && styles.langItemActive,
                     state.pressed && styles.pressablePressed,
-                    isTv && isPressableFocused(state) && styles.tvFocusRing,
                   ]}
                   onPress={() => {
                     setTargetLang(item.code);
                     setShowLangPicker(false);
                   }}
-                  focusable={isTv}
                 >
                   <Text
                     style={[
@@ -757,11 +726,11 @@ export default function SettingsScreen() {
                   {item.code === targetLang && (
                     <Text style={styles.checkmark}>✓</Text>
                   )}
-                </TVPressable>
+                </Pressable>
               )}
             />
           </View>
-        </TVPressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -985,14 +954,6 @@ const styles = StyleSheet.create({
     borderColor: "#2d2d44",
     marginBottom: 12,
   },
-  tvInputFocused: {
-    borderColor: "#67e8f9",
-    borderWidth: 2,
-    shadowColor: "#67e8f9",
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    elevation: 8,
-  },
   manualInputActions: {
     flexDirection: "row",
     gap: 10,
@@ -1026,14 +987,6 @@ const styles = StyleSheet.create({
   },
   pressablePressed: {
     opacity: 0.85,
-  },
-  tvFocusRing: {
-    borderWidth: 2,
-    borderColor: "#67e8f9",
-    shadowColor: "#67e8f9",
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    elevation: 8,
   },
 
   /* General settings */

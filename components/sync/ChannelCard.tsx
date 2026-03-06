@@ -7,9 +7,8 @@ import {
   StyleSheet,
   Dimensions,
   ActivityIndicator,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemoteChannel } from "../../types";
 import {
   colors,
@@ -28,7 +27,6 @@ const CARD_WIDTH = (SCREEN_WIDTH - CARD_PADDING * 2 - CARD_GAP) / 2;
 interface ChannelCardProps {
   channel: RemoteChannel;
   onPress: () => void;
-  hasTVPreferredFocus?: boolean;
 }
 
 function formatLastUpdated(dateStr?: string | null) {
@@ -48,10 +46,7 @@ function formatLastUpdated(dateStr?: string | null) {
 export function ChannelCard({
   channel,
   onPress,
-  hasTVPreferredFocus = false,
 }: ChannelCardProps) {
-  const isTv = false;
-  const [isFocused, setIsFocused] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const lastUpdated = formatLastUpdated(channel.lastUpdatedAt);
@@ -62,17 +57,12 @@ export function ChannelCard({
   const showPlaceholder = !hasValidUrl || imageError || !imageLoaded;
 
   return (
-    <TVPressable
+    <Pressable
       style={({ pressed }) => [
         styles.container,
-        isTv && isFocused && styles.focused,
         pressed && styles.pressed,
       ]}
       onPress={onPress}
-      focusable={isTv}
-      hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
     >
       <View style={styles.thumbnailContainer}>
         {/* Always render placeholder behind image */}
@@ -123,7 +113,7 @@ export function ChannelCard({
           )}
         </View>
       </View>
-    </TVPressable>
+    </Pressable>
   );
 }
 
@@ -142,15 +132,6 @@ const styles = StyleSheet.create({
   pressed: {
     backgroundColor: colors.muted,
     transform: [{ scale: 0.98 }],
-  },
-  focused: {
-    borderColor: colors.ring,
-    backgroundColor: colors.cardHover,
-    shadowColor: colors.ring,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   thumbnailContainer: {
     width: AVATAR_SIZE,

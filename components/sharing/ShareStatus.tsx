@@ -3,8 +3,8 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 
 interface ShareStatusProps {
@@ -40,9 +40,9 @@ export function ShareStatus({
         shared videos.
       </Text>
 
-      <TVPressable style={styles.stopButton} onPress={onStop}>
+      <Pressable style={styles.stopButton} onPress={onStop}>
         <Text style={styles.stopButtonText}>Stop Sharing</Text>
-      </TVPressable>
+      </Pressable>
     </View>
   );
 }

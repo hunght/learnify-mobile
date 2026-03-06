@@ -4,7 +4,6 @@ import {
   FlatList,
   ActivityIndicator,
   StyleSheet,
-  Platform,
 } from "react-native";
 import type { RemotePlaylist } from "../../types";
 import { PlaylistCard } from "./PlaylistCard";
@@ -30,8 +29,6 @@ export function PlaylistList({
   onSavePress,
   onRefresh,
 }: PlaylistListProps) {
-  const isTv = false;
-
   if (isLoading && playlists.length === 0) {
     return (
       <View style={styles.centered}>
@@ -73,7 +70,6 @@ export function PlaylistList({
           isFavorited={favoritePlaylistIds?.has(item.playlistId)}
           onPress={() => onPlaylistPress(item)}
           onSavePress={onSavePress ? () => onSavePress(item) : undefined}
-          hasTVPreferredFocus={isTv && index === 0}
         />
       )}
       contentContainerStyle={styles.list}

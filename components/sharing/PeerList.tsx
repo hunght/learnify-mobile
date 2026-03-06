@@ -4,8 +4,8 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import type { DiscoveredPeer } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Smartphone, Radio, ChevronRight } from "../../theme/icons";
@@ -50,7 +50,7 @@ export function PeerList({
           keyExtractor={(item) => item.name}
           style={styles.list}
           renderItem={({ item }) => (
-            <TVPressable
+            <Pressable
               style={[
                 styles.peerItem,
                 selectedPeer?.name === item.name && styles.peerItemSelected,
@@ -70,7 +70,7 @@ export function PeerList({
               <View style={styles.arrow}>
                 <ChevronRight size={24} color={colors.textTertiary} />
               </View>
-            </TVPressable>
+            </Pressable>
           )}
         />
       )}

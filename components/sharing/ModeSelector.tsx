@@ -1,5 +1,4 @@
-import { View, Text, StyleSheet } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Upload, Download } from "../../theme/icons";
 
@@ -13,7 +12,7 @@ interface ModeSelectorProps {
 export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
   return (
     <View style={styles.container}>
-      <TVPressable
+      <Pressable
         style={[styles.option, selected === "share" && styles.optionSelected]}
         onPress={() => onSelect("share")}
       >
@@ -32,9 +31,9 @@ export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
         <Text style={styles.optionDescription}>
           Let nearby devices download your videos
         </Text>
-      </TVPressable>
+      </Pressable>
 
-      <TVPressable
+      <Pressable
         style={[
           styles.option,
           selected === "receive" && styles.optionSelected,
@@ -58,7 +57,7 @@ export function ModeSelector({ selected, onSelect }: ModeSelectorProps) {
         <Text style={styles.optionDescription}>
           Download videos from nearby devices
         </Text>
-      </TVPressable>
+      </Pressable>
     </View>
   );
 }

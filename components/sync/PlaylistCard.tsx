@@ -1,12 +1,10 @@
-import {
-  useState } from "react";
+import { useState } from "react";
 import { View,
   Text,
   Image,
   StyleSheet,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemotePlaylist } from "../../types";
 import { api } from "../../services/api";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
@@ -18,7 +16,6 @@ interface PlaylistCardProps {
   isFavorited?: boolean;
   onPress: () => void;
   onSavePress?: () => void;
-  hasTVPreferredFocus?: boolean;
 }
 
 export function PlaylistCard({
@@ -27,10 +24,7 @@ export function PlaylistCard({
   isFavorited = false,
   onPress,
   onSavePress,
-  hasTVPreferredFocus = false,
 }: PlaylistCardProps) {
-  const isTv = false;
-  const [isFocused, setIsFocused] = useState(false);
   const itemCount = playlist.itemCount ?? 0;
   const [imageError, setImageError] = useState(false);
 
@@ -50,16 +44,9 @@ export function PlaylistCard({
   const showImage = thumbnailUrl && !imageError;
 
   return (
-    <TVPressable
-      style={[
-        styles.container,
-        isTv && isFocused && styles.containerFocused,
-      ]}
+    <Pressable
+      style={styles.container}
       onPress={onPress}
-      focusable={isTv}
-      hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
     >
       <View style={styles.thumbnailContainer}>
         {showImage ? (
@@ -99,15 +86,15 @@ export function PlaylistCard({
         </View>
       </View>
       {onSavePress && (
-        <TVPressable style={styles.saveButton} onPress={onSavePress} focusable={!isTv}>
+        <Pressable style={styles.saveButton} onPress={onSavePress}>
           <Heart
             size={20}
             color={isFavorited ? colors.destructive : colors.mutedForeground}
             fill={isFavorited ? colors.destructive : "none"}
           />
-        </TVPressable>
+        </Pressable>
       )}
-    </TVPressable>
+    </Pressable>
   );
 }
 
@@ -122,15 +109,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  containerFocused: {
-    borderColor: colors.ring,
-    backgroundColor: colors.cardHover,
-    shadowColor: colors.ring,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   thumbnailContainer: {
     width: 80,

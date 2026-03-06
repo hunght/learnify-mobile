@@ -4,7 +4,6 @@ import {
   FlatList,
   ActivityIndicator,
   StyleSheet,
-  Platform,
 } from "react-native";
 import type { RemoteChannel } from "../../types";
 import { ChannelCard } from "./ChannelCard";
@@ -24,8 +23,6 @@ export function ChannelList({
   onChannelPress,
   onRefresh,
 }: ChannelListProps) {
-  const isTv = false;
-
   if (isLoading && channels.length === 0) {
     return (
       <View style={styles.centered}>
@@ -66,7 +63,6 @@ export function ChannelList({
         <ChannelCard
           channel={item}
           onPress={() => onChannelPress(item)}
-          hasTVPreferredFocus={isTv && index === 0}
         />
       )}
       contentContainerStyle={styles.list}

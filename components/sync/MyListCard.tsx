@@ -1,12 +1,9 @@
-import {
-  useState } from "react";
 import { View,
   Text,
   Image,
   StyleSheet,
-  Platform,
+  Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import type { RemoteMyList } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Plus } from "../../theme/icons";
@@ -14,26 +11,14 @@ import { Plus } from "../../theme/icons";
 interface MyListCardProps {
   myList: RemoteMyList;
   onPress: () => void;
-  hasTVPreferredFocus?: boolean;
 }
 
 export function MyListCard({
   myList,
   onPress,
-  hasTVPreferredFocus = false,
 }: MyListCardProps) {
-  const isTv = false;
-  const [isFocused, setIsFocused] = useState(false);
-
   return (
-    <TVPressable
-      style={[styles.container, isTv && isFocused && styles.containerFocused]}
-      onPress={onPress}
-      focusable={isTv}
-      hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
-    >
+    <Pressable style={styles.container} onPress={onPress}>
       <View style={styles.thumbnailContainer}>
         {myList.thumbnailUrl ? (
           <Image
@@ -60,7 +45,7 @@ export function MyListCard({
           {myList.itemCount} item{myList.itemCount !== 1 ? "s" : ""}
         </Text>
       </View>
-    </TVPressable>
+    </Pressable>
   );
 }
 
@@ -75,15 +60,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  containerFocused: {
-    borderColor: colors.ring,
-    backgroundColor: colors.cardHover,
-    shadowColor: colors.ring,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   thumbnailContainer: {
     width: 80,

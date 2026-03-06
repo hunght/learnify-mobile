@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -38,7 +37,6 @@ function getResumeLabel(item: WatchHistoryItem): string {
 
 export default function HistoryScreen() {
   const videos = useLibraryStore((state) => state.videos);
-  const isTv = false;
   const [historyItems, setHistoryItems] = useState<WatchHistoryItem[]>([]);
 
   const loadHistory = useCallback(() => {
@@ -87,7 +85,7 @@ export default function HistoryScreen() {
       <FlatList
         data={historyItems}
         keyExtractor={(item) => item.videoId}
-        numColumns={isTv ? 3 : 2}
+        numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.gridContent}
         renderItem={({ item, index }) => {
@@ -109,7 +107,6 @@ export default function HistoryScreen() {
                   thumbnailUrl: item.thumbnailUrl,
                 }}
                 subtitle={getResumeLabel(item)}
-                hasTVPreferredFocus={isTv && index === 0}
                 onPress={() => handlePressVideo(item)}
               />
               {/* Watch progress bar overlaid at the bottom of the card */}

@@ -1,5 +1,4 @@
-import { View, Text, Image, StyleSheet, ActivityIndicator } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
+import { View, Text, Image, StyleSheet, ActivityIndicator, Pressable } from "react-native";
 import type { RemoteVideoWithStatus } from "../../types";
 import { colors, radius, spacing, fontSize, fontWeight } from "../../theme";
 import { Film } from "../../theme/icons";
@@ -16,7 +15,7 @@ export function SubscriptionVideoGridItem({
   onPress,
 }: SubscriptionVideoGridItemProps) {
   return (
-    <TVPressable
+    <Pressable
       style={({ pressed }) => [
         styles.card,
         pressed && !isPending ? styles.cardPressed : null,
@@ -45,7 +44,7 @@ export function SubscriptionVideoGridItem({
       <Text style={styles.channel} numberOfLines={1}>
         {video.channelTitle}
       </Text>
-    </TVPressable>
+    </Pressable>
   );
 }
 

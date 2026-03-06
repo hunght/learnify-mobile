@@ -1,14 +1,11 @@
 import {
-    useState } from "react";
-import {
     View,
     Text,
     Image,
     StyleSheet,
     ActivityIndicator,
-    Platform,
+    Pressable,
 } from "react-native";
-import { TVPressable } from "@/components/ui/TVPressable";
 import { colors, radius, spacing, fontSize, fontWeight } from "../theme";
 import { Film } from "../theme/icons";
 
@@ -33,7 +30,6 @@ interface VideoGridCardProps {
     onPress: () => void;
     onCancelPress?: () => void;
     subtitle?: string;
-    hasTVPreferredFocus?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -51,28 +47,16 @@ export function VideoGridCard({
     onPress,
     onCancelPress,
     subtitle,
-    hasTVPreferredFocus = false,
 }: VideoGridCardProps) {
     const isPending = pending.type !== "none" && pending.type !== "failed";
-    const isTv = false;
-    const [isFocused, setIsFocused] = useState(false);
 
     return (
-        <TVPressable
+        <Pressable
             style={({ pressed }) => [styles.card, pressed && !isPending && styles.cardPressed]}
             onPress={onPress}
             disabled={isPending}
-            focusable={isTv}
-            hasTVPreferredFocus={hasTVPreferredFocus}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
         >
-            <View
-                style={[
-                    styles.thumbnailContainer,
-                    isTv && isFocused && styles.thumbnailContainerFocused,
-                ]}
-            >
+            <View style={styles.thumbnailContainer}>
                 {video.thumbnailUrl ? (
                     <Image source={{ uri: video.thumbnailUrl }} style={styles.thumbnail} resizeMode="cover" />
                 ) : (
@@ -133,15 +117,14 @@ export function VideoGridCard({
 
             {/* Cancel button when pending */}
             {isPending && onCancelPress && (
-                <TVPressable
+                <Pressable
                     style={styles.cancelButton}
                     onPress={onCancelPress}
-                    focusable={!isTv}
                 >
                     <Text style={styles.cancelText}>Cancel</Text>
-                </TVPressable>
+                </Pressable>
             )}
-        </TVPressable>
+        </Pressable>
     );
 }
 
@@ -159,15 +142,6 @@ const styles = StyleSheet.create({
         borderRadius: radius.md,
         overflow: "hidden",
         backgroundColor: colors.card,
-    },
-    thumbnailContainerFocused: {
-        borderWidth: 2,
-        borderColor: colors.ring,
-        shadowColor: colors.ring,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.35,
-        shadowRadius: 12,
-        elevation: 8,
     },
     thumbnail: {
         width: "100%",
