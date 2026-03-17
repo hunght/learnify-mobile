@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogContext {
@@ -15,8 +17,11 @@ export interface AppLogEntry {
 
 const isDev = __DEV__;
 const MAX_LOG_ENTRIES = 800;
+const LOG_STORAGE_KEY = "learnify-mobile-app-logs";
 let logEntries: AppLogEntry[] = [];
 let logCounter = 0;
+let hydratePromise: Promise<void> | null = null;
+let persistTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const subscribers = new Set<(entries: AppLogEntry[]) => void>();
 
@@ -67,6 +72,61 @@ function appendLog(
   for (const subscriber of subscribers) {
     subscriber([...logEntries]);
   }
+
+  schedulePersist();
+}
+
+function notifySubscribers() {
+  for (const subscriber of subscribers) {
+    subscriber([...logEntries]);
+  }
+}
+
+async function hydrateEntries(): Promise<void> {
+  if (hydratePromise) {
+    return hydratePromise;
+  }
+
+  hydratePromise = (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(LOG_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as AppLogEntry[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      logEntries = parsed
+        .filter((entry) => typeof entry?.id === "number" && typeof entry?.message === "string")
+        .slice(-MAX_LOG_ENTRIES);
+      logCounter = logEntries.reduce((maxId, entry) => Math.max(maxId, entry.id), 0);
+      notifySubscribers();
+    } catch (error) {
+      if (isDev) {
+        console.warn("[logger] Failed to hydrate persisted logs", error);
+      }
+    }
+  })();
+
+  return hydratePromise;
+}
+
+function schedulePersist() {
+  if (persistTimeout) {
+    clearTimeout(persistTimeout);
+  }
+
+  persistTimeout = setTimeout(() => {
+    persistTimeout = null;
+    void AsyncStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logEntries)).catch((error) => {
+      if (isDev) {
+        console.warn("[logger] Failed to persist logs", error);
+      }
+    });
+  }, 250);
 }
 
 export const logger = {
@@ -116,9 +176,8 @@ export const logger = {
 
   clearEntries() {
     logEntries = [];
-    for (const subscriber of subscribers) {
-      subscriber([]);
-    }
+    notifySubscribers();
+    schedulePersist();
   },
 
   subscribe(listener: (entries: AppLogEntry[]) => void): () => void {
@@ -129,3 +188,5 @@ export const logger = {
     };
   },
 };
+
+void hydrateEntries();

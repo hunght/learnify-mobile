@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
-  PermissionsAndroid,
-  Platform,
   View,
   Text,
   StyleSheet,
@@ -13,6 +11,7 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useConnectionStore } from "../../stores/connection";
 import { api } from "../../services/api";
+import { ensureDiscoveryPermissions } from "../../services/discovery-permissions";
 import { startScanning, stopScanning } from "../../services/p2p/discovery";
 import {
   assertSyncCompatibility,
@@ -25,8 +24,6 @@ const DEFAULT_SYNC_PORT = 53318;
 const LEGACY_SYNC_PORT = 8384;
 const AUTO_CONNECT_DELAY_SECONDS = 3;
 const AUTO_CONNECT_DELAY_MS = AUTO_CONNECT_DELAY_SECONDS * 1000;
-const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
-  "android.permission.NEARBY_WIFI_DEVICES";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
@@ -100,38 +97,6 @@ function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
     }
   }
   return Array.from(new Set(urls));
-}
-
-function getAndroidApiLevel(): number {
-  if (Platform.OS !== "android") return 0;
-  if (typeof Platform.Version === "number") return Platform.Version;
-  const parsed = Number.parseInt(String(Platform.Version), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-async function ensureDiscoveryPermissions(): Promise<boolean> {
-  if (Platform.OS !== "android") return true;
-
-  const apiLevel = getAndroidApiLevel();
-  if (apiLevel < 33) return true;
-
-  const permission =
-    ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
-      typeof PermissionsAndroid.check
-    >[0];
-
-  const alreadyGranted = await PermissionsAndroid.check(permission);
-  if (alreadyGranted) return true;
-
-  const result = await PermissionsAndroid.request(permission, {
-    title: "Allow Nearby Devices",
-    message:
-      "LearnifyTube needs Nearby devices permission to discover your desktop app on local Wi-Fi.",
-    buttonPositive: "Allow",
-    buttonNegative: "Not now",
-  });
-
-  return result === PermissionsAndroid.RESULTS.GRANTED;
 }
 
 function getPeerKey(peer: DiscoveredPeer): string {
@@ -265,10 +230,10 @@ export default function TVConnectScreen() {
       setScanError(null);
 
       try {
-        const granted = await ensureDiscoveryPermissions();
+        const permissionStatus = await ensureDiscoveryPermissions();
         if (cancelled) return;
 
-        if (!granted) {
+        if (!permissionStatus.granted) {
           setScanError("Nearby devices permission is required for auto-discovery.");
           setIsScanning(false);
           return;

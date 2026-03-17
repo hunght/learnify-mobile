@@ -3,6 +3,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef } from "react";
 import {
   View,
@@ -13,8 +14,6 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Platform,
-  PermissionsAndroid,
   Pressable,
   TextInput,
 } from "react-native";
@@ -32,13 +31,14 @@ import {
   getAndroidApkUpdateAvailability,
   type AndroidApkUpdateAvailability,
 } from "../../../services/app-update";
+import { ensureDiscoveryPermissions } from "../../../services/discovery-permissions";
+import { logger, type AppLogEntry } from "../../../services/logger";
 import type { DiscoveredPeer } from "../../../types";
 
 const DEFAULT_SYNC_PORT = 53318;
 const LEGACY_SYNC_PORT = 8384;
 const DISCOVERY_SCAN_TIMEOUT_MS = 15000;
-const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
-  "android.permission.NEARBY_WIFI_DEVICES";
+const LOG_PAGE_SIZE = 20;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -118,49 +118,6 @@ function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
   return Array.from(new Set(urls));
 }
 
-function getAndroidApiLevel(): number {
-  if (Platform.OS !== "android") return 0;
-  if (typeof Platform.Version === "number") return Platform.Version;
-  const parsed = Number.parseInt(String(Platform.Version), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-async function ensureDiscoveryPermissions(): Promise<{
-  granted: boolean;
-  details: string;
-}> {
-  if (Platform.OS !== "android") {
-    return { granted: true, details: "platform=non-android" };
-  }
-
-  const apiLevel = getAndroidApiLevel();
-  if (apiLevel < 33) {
-    return { granted: true, details: `api=${apiLevel} no-runtime-nearby-required` };
-  }
-
-  const permission =
-    ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
-      typeof PermissionsAndroid.check
-    >[0];
-  const alreadyGranted = await PermissionsAndroid.check(permission);
-  if (alreadyGranted) {
-    return { granted: true, details: `api=${apiLevel} nearby=granted` };
-  }
-
-  const result = await PermissionsAndroid.request(permission, {
-    title: "Allow Nearby Devices",
-    message:
-      "LearnifyTube needs Nearby devices permission to discover your desktop app on local Wi-Fi.",
-    buttonPositive: "Allow",
-    buttonNegative: "Not now",
-  });
-
-  return {
-    granted: result === PermissionsAndroid.RESULTS.GRANTED,
-    details: `api=${apiLevel} nearby=${result}`,
-  };
-}
-
 export default function SettingsScreen() {
   const targetLang = useSettingsStore((s) => s.translationTargetLang);
   const setTargetLang = useSettingsStore((s) => s.setTranslationTargetLang);
@@ -172,11 +129,16 @@ export default function SettingsScreen() {
   const isConnected = !!serverUrl;
 
   const [showLangPicker, setShowLangPicker] = useState(false);
+  const [showLogViewer, setShowLogViewer] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isLoadingUpdateAvailability, setIsLoadingUpdateAvailability] =
     useState(false);
   const [updateAvailability, setUpdateAvailability] =
     useState<AndroidApkUpdateAvailability | null>(null);
+  const [logEntries, setLogEntries] = useState<AppLogEntry[]>(() =>
+    logger.getEntries()
+  );
+  const [logPage, setLogPage] = useState(0);
 
   // Connection state
   const [ipAddress, setIpAddress] = useState("");
@@ -197,10 +159,37 @@ export default function SettingsScreen() {
   const appVersion =
     Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
   const appBuild = Constants.nativeBuildVersion ?? "-";
+  const reversedLogs = useMemo(() => [...logEntries].reverse(), [logEntries]);
+  const totalLogPages = Math.max(1, Math.ceil(reversedLogs.length / LOG_PAGE_SIZE));
+  const clampedLogPage = Math.min(logPage, totalLogPages - 1);
+  const pagedLogs = reversedLogs.slice(
+    clampedLogPage * LOG_PAGE_SIZE,
+    clampedLogPage * LOG_PAGE_SIZE + LOG_PAGE_SIZE
+  );
 
   useEffect(() => {
     discoveredCountRef.current = discoveredDevices.length;
   }, [discoveredDevices.length]);
+
+  useEffect(() => {
+    const unsubscribe = logger.subscribe((entries) => {
+      setLogEntries(entries);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    logger.info("[Mobile Settings] Opened settings", {
+      appVersion,
+      appBuild,
+      isConnected,
+      serverUrl,
+    });
+
+    return () => {
+      logger.info("[Mobile Settings] Closed settings");
+    };
+  }, [appBuild, appVersion, isConnected, serverUrl]);
 
   // mDNS scanning when not connected
   useEffect(() => {
@@ -234,11 +223,15 @@ export default function SettingsScreen() {
 
     const beginScan = async () => {
       try {
+        logger.info("[Mobile Discovery] Starting scan", {
+          attempt: scanAttempt + 1,
+        });
         const permissionStatus = await ensureDiscoveryPermissions();
         if (isCancelled) return;
         if (!permissionStatus.granted) {
+          logger.warn("[Mobile Discovery] Permission denied", permissionStatus);
           stopScanWithError(
-            "Nearby devices permission is required to discover desktop on TV.",
+            "A discovery permission is required to find your desktop app on local Wi-Fi.",
             `attempt=${scanAttempt + 1} ${permissionStatus.details}`
           );
           return;
@@ -247,6 +240,12 @@ export default function SettingsScreen() {
         startScanning({
           onPeerFound: (peer) => {
             if (isCancelled) return;
+            logger.info("[Mobile Discovery] Peer found", {
+              name: peer.name,
+              host: peer.host,
+              hosts: peer.hosts,
+              port: peer.port,
+            });
             setDiscoveredDevices((prev) => {
               const existing = prev.find((p) => p.name === peer.name);
               if (existing) return prev.map((p) => (p.name === peer.name ? peer : p));
@@ -255,11 +254,16 @@ export default function SettingsScreen() {
           },
           onPeerLost: (name) => {
             if (isCancelled) return;
+            logger.info("[Mobile Discovery] Peer lost", { name });
             setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
           },
           onError: (error) => {
             console.error("[Settings] mDNS scan error:", error);
             const reason = getErrorMessage(error);
+            logger.error("[Mobile Discovery] Scan error", error, {
+              attempt: scanAttempt + 1,
+              reason,
+            });
             stopScanWithError(
               "Nearby discovery failed.",
               `attempt=${scanAttempt + 1} source=zeroconf reason=${reason}`
@@ -271,6 +275,11 @@ export default function SettingsScreen() {
           if (isCancelled) return;
           if (discoveredCountRef.current > 0) return;
           const elapsedMs = Date.now() - startedAt;
+          logger.warn("[Mobile Discovery] Scan timed out", {
+            attempt: scanAttempt + 1,
+            elapsedMs,
+            discoveredDevices: discoveredCountRef.current,
+          });
           stopScanWithError(
             "Scanning timed out. No nearby desktop found.",
             `attempt=${scanAttempt + 1} timeoutMs=${DISCOVERY_SCAN_TIMEOUT_MS} elapsedMs=${elapsedMs} devices=${discoveredCountRef.current}`
@@ -278,6 +287,10 @@ export default function SettingsScreen() {
         }, DISCOVERY_SCAN_TIMEOUT_MS);
       } catch (error) {
         const reason = getErrorMessage(error);
+        logger.error("[Mobile Discovery] Failed to begin scan", error, {
+          attempt: scanAttempt + 1,
+          reason,
+        });
         stopScanWithError(
           "Could not start nearby discovery.",
           `attempt=${scanAttempt + 1} source=permission-check reason=${reason}`
@@ -292,12 +305,16 @@ export default function SettingsScreen() {
       if (timeoutId) clearTimeout(timeoutId);
       stopScanning();
       setIsScanning(false);
+      logger.info("[Mobile Discovery] Stopped scan", { attempt: scanAttempt + 1 });
     };
   }, [isConnected, scanAttempt]);
 
   const handleRetryScan = useCallback(() => {
+    logger.info("[Mobile Discovery] Retry scan requested", {
+      nextAttempt: scanAttempt + 2,
+    });
     setScanAttempt((prev) => prev + 1);
-  }, []);
+  }, [scanAttempt]);
 
   const refreshUpdateAvailability = useCallback(async () => {
     setIsLoadingUpdateAvailability(true);
@@ -334,6 +351,10 @@ export default function SettingsScreen() {
 
   const handleConnectToDevice = async (device: DiscoveredPeer) => {
     const candidateUrls = buildDiscoveredConnectUrls(device);
+    logger.info("[Mobile Discovery] Connecting to discovered device", {
+      name: device.name,
+      candidateUrls,
+    });
     setIsConnecting(true);
     let lastError: unknown = null;
 
@@ -344,20 +365,36 @@ export default function SettingsScreen() {
           assertSyncCompatibility(info);
           setServerUrl(url);
           setServerName(info.name);
+          logger.info("[Mobile Discovery] Connected to desktop", {
+            url,
+            serverName: info.name,
+          });
           return;
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") return;
           if (error instanceof SyncCompatibilityError) throw error;
           lastError = error;
+          logger.warn("[Mobile Discovery] Candidate failed", {
+            url,
+            reason: getErrorMessage(error),
+          });
         }
       }
       throw lastError ?? new Error("All connection attempts failed");
     } catch (error) {
       if (error instanceof SyncCompatibilityError) {
+        logger.warn("[Mobile Discovery] Compatibility error", {
+          issue: error.issue,
+          message: error.message,
+        });
         showCompatibilityAlert(error);
         return;
       }
       const reason = getErrorMessage(error);
+      logger.error("[Mobile Discovery] Connect to discovered device failed", error, {
+        candidateUrls,
+        reason,
+      });
       Alert.alert(
         "Connection Failed",
         `Could not connect to the device.\n\nTried:\n${candidateUrls.join("\n")}\n\nLast error:\n${reason}\n\nTip: ensure Desktop app Sync is enabled and both devices are on the same Wi-Fi.`
@@ -369,11 +406,16 @@ export default function SettingsScreen() {
 
   const handleManualConnect = async () => {
     if (!ipAddress.trim()) {
+      logger.warn("[Mobile Discovery] Manual connect attempted with empty input");
       Alert.alert("Error", "Please enter an IP address");
       return;
     }
     setIsConnecting(true);
     const candidateUrls = buildManualConnectUrls(ipAddress);
+    logger.info("[Mobile Discovery] Manual connect requested", {
+      input: ipAddress,
+      candidateUrls,
+    });
     let lastError: unknown = null;
 
     try {
@@ -383,6 +425,10 @@ export default function SettingsScreen() {
           assertSyncCompatibility(info);
           setServerUrl(url);
           setServerName(info.name);
+          logger.info("[Mobile Discovery] Manual connect succeeded", {
+            url,
+            serverName: info.name,
+          });
           setShowManualInput(false);
           setIpAddress("");
           return;
@@ -390,15 +436,27 @@ export default function SettingsScreen() {
           if (error instanceof Error && error.name === "AbortError") return;
           if (error instanceof SyncCompatibilityError) throw error;
           lastError = error;
+          logger.warn("[Mobile Discovery] Manual candidate failed", {
+            url,
+            reason: getErrorMessage(error),
+          });
         }
       }
       throw lastError ?? new Error("All connection attempts failed");
     } catch (error) {
       if (error instanceof SyncCompatibilityError) {
+        logger.warn("[Mobile Discovery] Manual compatibility error", {
+          issue: error.issue,
+          message: error.message,
+        });
         showCompatibilityAlert(error);
         return;
       }
       const reason = getErrorMessage(error);
+      logger.error("[Mobile Discovery] Manual connect failed", error, {
+        candidateUrls,
+        reason,
+      });
       Alert.alert(
         "Connection Failed",
         `Could not connect to desktop.\n\nTried:\n${candidateUrls.join("\n")}\n\nLast error:\n${reason}`
@@ -409,6 +467,10 @@ export default function SettingsScreen() {
   };
 
   const handleDisconnect = () => {
+    logger.info("[Mobile Discovery] Disconnect requested", {
+      serverName,
+      serverUrl,
+    });
     Alert.alert(
       "Disconnect",
       `Disconnect from ${serverName || "Desktop"}?`,
@@ -420,11 +482,29 @@ export default function SettingsScreen() {
           onPress: () => {
             disconnect();
             setDiscoveredDevices([]);
+            logger.info("[Mobile Discovery] Disconnected from desktop");
           },
         },
       ]
     );
   };
+
+  const openLogViewer = useCallback(() => {
+    setLogPage(0);
+    setShowLogViewer(true);
+    logger.info("[Mobile Settings] Opened log viewer");
+  }, []);
+
+  const closeLogViewer = useCallback(() => {
+    setShowLogViewer(false);
+    logger.info("[Mobile Settings] Closed log viewer");
+  }, []);
+
+  const clearLogs = useCallback(() => {
+    logger.clearEntries();
+    logger.info("[Mobile Settings] Cleared app logs");
+    setLogPage(0);
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -619,6 +699,27 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>App</Text>
 
+          <Pressable
+            style={(state) => [
+              styles.settingRow,
+              state.pressed && styles.pressablePressed,
+            ]}
+            onPress={openLogViewer}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Debug Logs</Text>
+              <Text style={styles.settingDescription}>
+                Review recent app and connection events
+              </Text>
+            </View>
+            <View style={styles.settingValue}>
+              <Text style={styles.settingValueText}>
+                {logEntries.length} entries
+              </Text>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Pressable>
+
           {isLoadingUpdateAvailability && (
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
@@ -729,6 +830,112 @@ export default function SettingsScreen() {
                 </Pressable>
               )}
             />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showLogViewer}
+        transparent
+        animationType="slide"
+        onRequestClose={closeLogViewer}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeLogViewer}>
+          <View
+            style={[styles.modalContent, styles.logModalContent]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.modalHandle} />
+            <View style={styles.logHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Debug Logs</Text>
+                <Text style={styles.logMeta}>
+                  Page {clampedLogPage + 1}/{totalLogPages} · {logEntries.length} entries
+                </Text>
+              </View>
+              <Pressable
+                style={(state) => [
+                  styles.logHeaderButton,
+                  state.pressed && styles.pressablePressed,
+                ]}
+                onPress={clearLogs}
+              >
+                <Text style={styles.logHeaderButtonText}>Clear</Text>
+              </Pressable>
+            </View>
+
+            {pagedLogs.length === 0 ? (
+              <View style={styles.logEmptyState}>
+                <Text style={styles.logEmptyText}>No logs yet</Text>
+                <Text style={styles.logEmptySubText}>
+                  Connection attempts and app events will appear here.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={pagedLogs}
+                keyExtractor={(item) => String(item.id)}
+                style={styles.logList}
+                contentContainerStyle={styles.logListContent}
+                renderItem={({ item }) => (
+                  <View
+                    style={[
+                      styles.logEntry,
+                      item.level === "warn" && styles.logEntryWarn,
+                      item.level === "error" && styles.logEntryError,
+                    ]}
+                  >
+                    <Text style={styles.logTimestamp}>{item.timestamp}</Text>
+                    <Text style={styles.logLevel}>{item.level.toUpperCase()}</Text>
+                    <Text style={styles.logMessage}>{item.message}</Text>
+                    {item.context ? (
+                      <Text style={styles.logContext}>{item.context}</Text>
+                    ) : null}
+                    {item.error ? (
+                      <Text style={styles.logError}>{item.error}</Text>
+                    ) : null}
+                  </View>
+                )}
+              />
+            )}
+
+            <View style={styles.logFooter}>
+              <Pressable
+                style={(state) => [
+                  styles.logPageButton,
+                  !(
+                    clampedLogPage * LOG_PAGE_SIZE + LOG_PAGE_SIZE < reversedLogs.length
+                  ) && styles.logPageButtonDisabled,
+                  state.pressed &&
+                    clampedLogPage * LOG_PAGE_SIZE + LOG_PAGE_SIZE < reversedLogs.length &&
+                    styles.pressablePressed,
+                ]}
+                disabled={!(clampedLogPage * LOG_PAGE_SIZE + LOG_PAGE_SIZE < reversedLogs.length)}
+                onPress={() => setLogPage((prev) => prev + 1)}
+              >
+                <Text style={styles.logPageButtonText}>Older</Text>
+              </Pressable>
+              <Pressable
+                style={(state) => [
+                  styles.logPageButton,
+                  !(clampedLogPage > 0) && styles.logPageButtonDisabled,
+                  state.pressed && clampedLogPage > 0 && styles.pressablePressed,
+                ]}
+                disabled={!(clampedLogPage > 0)}
+                onPress={() => setLogPage((prev) => Math.max(0, prev - 1))}
+              >
+                <Text style={styles.logPageButtonText}>Newer</Text>
+              </Pressable>
+              <Pressable
+                style={(state) => [
+                  styles.logCloseButton,
+                  state.pressed && styles.pressablePressed,
+                ]}
+                onPress={closeLogViewer}
+              >
+                <Text style={styles.logCloseButtonText}>Close</Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -1081,6 +1288,125 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 16,
     textAlign: "center",
+  },
+  logModalContent: {
+    maxHeight: "85%",
+  },
+  logHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  logMeta: {
+    color: "#8b9dc3",
+    fontSize: 12,
+  },
+  logHeaderButton: {
+    backgroundColor: "#242c3d",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  logHeaderButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  logList: {
+    flexGrow: 0,
+  },
+  logListContent: {
+    paddingBottom: 8,
+  },
+  logEntry: {
+    backgroundColor: "#0f0f23",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#2d2d44",
+    gap: 4,
+  },
+  logEntryWarn: {
+    borderColor: "#7c5f17",
+    backgroundColor: "#221b0f",
+  },
+  logEntryError: {
+    borderColor: "#7f3b44",
+    backgroundColor: "#241317",
+  },
+  logTimestamp: {
+    color: "#8b9dc3",
+    fontSize: 11,
+  },
+  logLevel: {
+    color: "#4ade80",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  logMessage: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  logContext: {
+    color: "#cbd5e1",
+    fontSize: 12,
+  },
+  logError: {
+    color: "#fda4af",
+    fontSize: 12,
+  },
+  logEmptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  logEmptyText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  logEmptySubText: {
+    color: "#8b9dc3",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  logFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 8,
+  },
+  logPageButton: {
+    flex: 1,
+    backgroundColor: "#242c3d",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  logPageButtonDisabled: {
+    opacity: 0.45,
+  },
+  logPageButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  logCloseButton: {
+    flex: 1.2,
+    backgroundColor: "#e94560",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  logCloseButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
   langList: {
     flexGrow: 0,

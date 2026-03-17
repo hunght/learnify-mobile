@@ -17,6 +17,7 @@ import { useConnectionStore } from "../../stores/connection";
 import { api } from "../../services/api";
 import { useLibraryStore } from "../../stores/library";
 import { useDownloadStore } from "../../stores/downloads";
+import { ensureDiscoveryPermissions } from "../../services/discovery-permissions";
 import { startScanning, stopScanning } from "../../services/p2p/discovery";
 import {
   assertSyncCompatibility,
@@ -125,31 +126,47 @@ export default function ConnectScreen() {
 
   // Start mDNS scanning on mount
   useEffect(() => {
-    console.log("[Connect] Starting mDNS scanning for desktop devices");
-    setIsScanning(true);
-    startScanning({
-      onPeerFound: (peer) => {
-        console.log("[Connect] Peer found:", peer.name, peer.host, peer.port);
-        setDiscoveredDevices((prev) => {
-          const existing = prev.find((p) => p.name === peer.name);
-          if (existing) {
-            console.log("[Connect] Updating existing peer:", peer.name);
-            return prev.map((p) => (p.name === peer.name ? peer : p));
-          }
-          console.log("[Connect] Adding new peer:", peer.name);
-          return [...prev, peer];
-        });
-      },
-      onPeerLost: (name) => {
-        console.log("[Connect] Peer lost:", name);
-        setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
-      },
-      onError: (error) => {
-        console.error("[Connect] mDNS scan error:", error);
-      },
-    });
+    let cancelled = false;
+
+    const beginScanning = async () => {
+      const permissionStatus = await ensureDiscoveryPermissions();
+      if (cancelled || !permissionStatus.granted) {
+        if (!permissionStatus.granted) {
+          console.warn("[Connect] Discovery permission denied:", permissionStatus.details);
+        }
+        setIsScanning(false);
+        return;
+      }
+
+      console.log("[Connect] Starting mDNS scanning for desktop devices");
+      setIsScanning(true);
+      startScanning({
+        onPeerFound: (peer) => {
+          console.log("[Connect] Peer found:", peer.name, peer.host, peer.port);
+          setDiscoveredDevices((prev) => {
+            const existing = prev.find((p) => p.name === peer.name);
+            if (existing) {
+              console.log("[Connect] Updating existing peer:", peer.name);
+              return prev.map((p) => (p.name === peer.name ? peer : p));
+            }
+            console.log("[Connect] Adding new peer:", peer.name);
+            return [...prev, peer];
+          });
+        },
+        onPeerLost: (name) => {
+          console.log("[Connect] Peer lost:", name);
+          setDiscoveredDevices((prev) => prev.filter((p) => p.name !== name));
+        },
+        onError: (error) => {
+          console.error("[Connect] mDNS scan error:", error);
+        },
+      });
+    };
+
+    void beginScanning();
 
     return () => {
+      cancelled = true;
       console.log("[Connect] Stopping mDNS scanning");
       stopScanning();
       setIsScanning(false);

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Constants from "expo-constants";
 import {
   ActivityIndicator,
-  PermissionsAndroid,
   Platform,
   StyleSheet,
   Text,
@@ -26,6 +25,7 @@ import {
   assertSyncCompatibility,
   SyncCompatibilityError,
 } from "../../services/sync-compatibility";
+import { ensureDiscoveryPermissions } from "../../services/discovery-permissions";
 import { TVFocusPressable } from "../../components/tv/TVFocusPressable";
 import type { DiscoveredPeer } from "../../types";
 
@@ -34,8 +34,13 @@ const LEGACY_SYNC_PORT = 8384;
 const AUTO_CONNECT_DELAY_SECONDS = 3;
 const AUTO_CONNECT_DELAY_MS = AUTO_CONNECT_DELAY_SECONDS * 1000;
 const LOG_PAGE_SIZE = 16;
-const ANDROID_NEARBY_WIFI_DEVICES_PERMISSION =
-  "android.permission.NEARBY_WIFI_DEVICES";
+
+function getAndroidApiLevel(): number {
+  if (Platform.OS !== "android") return 0;
+  if (typeof Platform.Version === "number") return Platform.Version;
+  const parsed = Number.parseInt(String(Platform.Version), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
@@ -113,57 +118,6 @@ function buildDiscoveredConnectUrls(device: DiscoveredPeer): string[] {
 
 function getPeerKey(peer: DiscoveredPeer): string {
   return `${peer.name}|${peer.host}|${peer.port}`;
-}
-
-function getAndroidApiLevel(): number {
-  if (Platform.OS !== "android") return 0;
-  if (typeof Platform.Version === "number") return Platform.Version;
-  const parsed = Number.parseInt(String(Platform.Version), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-async function ensureDiscoveryPermissions(): Promise<boolean> {
-  if (Platform.OS !== "android") return true;
-
-  const apiLevel = getAndroidApiLevel();
-  if (apiLevel < 33) {
-    logger.info("[TV Discovery] Permission check skipped for Android < 33", {
-      apiLevel,
-    });
-    return true;
-  }
-
-  const permission =
-    ANDROID_NEARBY_WIFI_DEVICES_PERMISSION as Parameters<
-      typeof PermissionsAndroid.check
-    >[0];
-
-  const alreadyGranted = await PermissionsAndroid.check(permission);
-  if (alreadyGranted) {
-    logger.info("[TV Discovery] Nearby devices permission already granted", {
-      apiLevel,
-    });
-    return true;
-  }
-
-  logger.warn("[TV Discovery] Nearby devices permission not granted; requesting", {
-    apiLevel,
-  });
-  const result = await PermissionsAndroid.request(permission, {
-    title: "Allow Nearby Devices",
-    message:
-      "LearnifyTube needs Nearby devices permission to discover your desktop app on local Wi-Fi.",
-    buttonPositive: "Allow",
-    buttonNegative: "Not now",
-  });
-
-  const granted = result === PermissionsAndroid.RESULTS.GRANTED;
-  if (granted) {
-    logger.info("[TV Discovery] Nearby devices permission granted");
-  } else {
-    logger.warn("[TV Discovery] Nearby devices permission denied", { result });
-  }
-  return granted;
 }
 
 export default function TVSettingsScreen() {
@@ -438,13 +392,13 @@ export default function TVSettingsScreen() {
       setDiscoveredDevices([]);
 
       try {
-        const granted = await ensureDiscoveryPermissions();
+        const permissionStatus = await ensureDiscoveryPermissions();
         if (cancelled) return;
 
-        if (!granted) {
+        if (!permissionStatus.granted) {
           setConnectionError("Nearby devices permission is required for discovery.");
           setIsScanning(false);
-          logger.warn("[TV Discovery] Scan blocked by missing permission");
+          logger.warn("[TV Discovery] Scan blocked by missing permission", permissionStatus);
           return;
         }
 
