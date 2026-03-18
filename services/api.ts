@@ -10,6 +10,7 @@ import type {
   ServerDownloadStatus,
   RemoteMyList,
 } from "../types";
+import { logger } from "./logger";
 
 const DEFAULT_TIMEOUT = 10000;
 const CONNECTION_INFO_TIMEOUT = 4000;
@@ -39,8 +40,19 @@ async function fetchWithTimeout(
     return response;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
+      logger.warn("[Mobile API] Request timed out", {
+        url,
+        timeoutMs: timeout,
+        method: options.method ?? "GET",
+      });
       throw new Error(`Request timed out after ${timeout}ms`);
     }
+    logger.warn("[Mobile API] Request failed", {
+      url,
+      timeoutMs: timeout,
+      method: options.method ?? "GET",
+      reason: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   } finally {
     clearTimeout(id);
@@ -52,15 +64,32 @@ export const api = {
     serverUrl: string,
     options?: { timeoutMs?: number }
   ): Promise<ServerInfo> {
+    const timeoutMs = options?.timeoutMs ?? CONNECTION_INFO_TIMEOUT;
+    logger.info("[Mobile API] Fetching desktop info", {
+      serverUrl,
+      timeoutMs,
+    });
     const response = await fetchWithTimeout(
       `${serverUrl}/api/info`,
       {},
-      options?.timeoutMs ?? CONNECTION_INFO_TIMEOUT
+      timeoutMs
     );
     if (!response.ok) {
+      logger.warn("[Mobile API] Desktop info request returned HTTP error", {
+        serverUrl,
+        status: response.status,
+      });
       throw new Error(`HTTP ${response.status}`);
     }
-    return response.json();
+    const info = (await response.json()) as ServerInfo;
+    logger.info("[Mobile API] Desktop info response", {
+      serverUrl,
+      name: info.name,
+      version: info.version,
+      syncProtocolVersion:
+        "syncProtocolVersion" in info ? (info as ServerInfo & { syncProtocolVersion?: number }).syncProtocolVersion : undefined,
+    });
+    return info;
   },
 
   async getVideos(serverUrl: string): Promise<{ videos: RemoteVideo[] }> {

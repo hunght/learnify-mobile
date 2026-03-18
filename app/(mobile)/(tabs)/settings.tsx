@@ -232,6 +232,9 @@ export default function SettingsScreen() {
       try {
         logger.info("[Mobile Discovery] Starting scan", {
           attempt: scanAttempt + 1,
+          isConnected,
+          savedServerUrl: serverUrl ?? null,
+          savedServerName: serverName ?? null,
         });
         const permissionStatus = await ensureDiscoveryPermissions();
         if (isCancelled) return;
@@ -360,6 +363,9 @@ export default function SettingsScreen() {
     const candidateUrls = buildDiscoveredConnectUrls(device);
     logger.info("[Mobile Discovery] Connecting to discovered device", {
       name: device.name,
+      host: device.host,
+      hosts: device.hosts,
+      port: device.port,
       candidateUrls,
     });
     setIsConnecting(true);
@@ -401,6 +407,10 @@ export default function SettingsScreen() {
       }
       const reason = getErrorMessage(error);
       logger.error("[Mobile Discovery] Connect to discovered device failed", error, {
+        peerName: device.name,
+        peerHost: device.host,
+        peerHosts: device.hosts,
+        peerPort: device.port,
         candidateUrls,
         reason,
       });
@@ -427,6 +437,10 @@ export default function SettingsScreen() {
     const candidateUrls = buildManualConnectUrls(ipAddress);
     logger.info("[Mobile Discovery] Manual connect requested", {
       input: ipAddress,
+      normalizedInput: ipAddress.trim(),
+      isConnected,
+      savedServerUrl: serverUrl ?? null,
+      savedServerName: serverName ?? null,
       candidateUrls,
     });
     let lastError: unknown = null;
