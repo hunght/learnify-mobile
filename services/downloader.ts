@@ -1,5 +1,5 @@
 import * as FileSystemLegacy from "expo-file-system/legacy";
-import { Paths, Directory, File } from "expo-file-system";
+import { Paths } from "expo-file-system";
 import { api } from "./api";
 import type { VideoMeta, Transcript } from "../types";
 
@@ -20,33 +20,54 @@ const log = (message: string, data?: unknown) => {
   }
 };
 
-const getVideosDir = () => new Directory(Paths.document, "videos");
+function getVideosDirUri(): string {
+  const documentDirectory = FileSystemLegacy.documentDirectory;
+  if (!documentDirectory) {
+    throw new Error("Document directory is not available");
+  }
+  return `${documentDirectory}videos`;
+}
+
+export function getVideoFileUri(videoId: string): string | null {
+  try {
+    return `${getVideosDirUri()}/${videoId}.mp4`;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Get the current local path for a video file.
  * This resolves the path dynamically to handle sandbox container changes.
  */
 export function getVideoLocalPath(videoId: string): string | null {
-  const videosDir = getVideosDir();
-  const videoFile = new File(videosDir, `${videoId}.mp4`);
-  return videoFile.exists ? videoFile.uri : null;
+  const videoUri = getVideoFileUri(videoId);
+  if (!videoUri) return null;
+
+  try {
+    const info = Paths.info(videoUri);
+    return info.exists && info.isDirectory === false ? videoUri : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Check if a video exists locally.
  */
 export function videoExistsLocally(videoId: string): boolean {
-  const videosDir = getVideosDir();
-  const videoFile = new File(videosDir, `${videoId}.mp4`);
-  return videoFile.exists;
+  return getVideoLocalPath(videoId) !== null;
 }
 
-export async function ensureVideosDir(): Promise<Directory> {
-  const videosDir = getVideosDir();
-  if (!videosDir.exists) {
-    videosDir.create();
+export async function ensureVideosDir(): Promise<string> {
+  const videosDirUri = getVideosDirUri();
+  const info = await FileSystemLegacy.getInfoAsync(videosDirUri);
+  if (!info.exists) {
+    await FileSystemLegacy.makeDirectoryAsync(videosDirUri, {
+      intermediates: true,
+    });
   }
-  return videosDir;
+  return videosDirUri;
 }
 
 export interface DownloadProgress {
@@ -61,12 +82,15 @@ export async function downloadVideo(
   onProgress: (progress: DownloadProgress) => void,
   signal?: AbortSignal
 ): Promise<{ videoPath: string; meta: VideoMeta; transcripts: Transcript[] }> {
-  const videosDir = await ensureVideosDir();
-  const videoFile = new File(videosDir, `${videoId}.mp4`);
+  await ensureVideosDir();
+  const videoFileUri = getVideoFileUri(videoId);
+  if (!videoFileUri) {
+    throw new Error("Video directory is not available");
+  }
   const videoUrl = api.getVideoFileUrl(serverUrl, videoId);
 
   log(`Starting download: ${videoUrl}`);
-  log(`Destination: ${videoFile.uri}`);
+  log(`Destination: ${videoFileUri}`);
 
   // Signal that download is starting
   onProgress({ progress: 0, bytesDownloaded: 0, totalBytes: 0 });
@@ -80,7 +104,7 @@ export async function downloadVideo(
     // Use legacy FileSystem API for downloading with progress
     const downloadResumable = FileSystemLegacy.createDownloadResumable(
       videoUrl,
-      videoFile.uri,
+      videoFileUri,
       {},
       (downloadProgress) => {
         const progress = Math.round(
@@ -184,18 +208,23 @@ export async function downloadVideo(
 }
 
 export async function cleanupPartialDownload(videoId: string): Promise<void> {
-  const videosDir = getVideosDir();
-  const videoFile = new File(videosDir, `${videoId}.mp4`);
-  const tempFile = new File(videosDir, `${videoId}.mp4.download`);
+  const videoFileUri = getVideoFileUri(videoId);
+  const tempFileUri = videoFileUri ? `${videoFileUri}.download` : null;
 
   try {
-    if (videoFile.exists) {
-      videoFile.delete();
-      log(`Cleaned up partial download: ${videoFile.uri}`);
+    if (videoFileUri) {
+      const videoInfo = await FileSystemLegacy.getInfoAsync(videoFileUri);
+      if (videoInfo.exists) {
+        await FileSystemLegacy.deleteAsync(videoFileUri, { idempotent: true });
+        log(`Cleaned up partial download: ${videoFileUri}`);
+      }
     }
-    if (tempFile.exists) {
-      tempFile.delete();
-      log(`Cleaned up temp file: ${tempFile.uri}`);
+    if (tempFileUri) {
+      const tempInfo = await FileSystemLegacy.getInfoAsync(tempFileUri);
+      if (tempInfo.exists) {
+        await FileSystemLegacy.deleteAsync(tempFileUri, { idempotent: true });
+        log(`Cleaned up temp file: ${tempFileUri}`);
+      }
     }
   } catch (error) {
     log(`Cleanup error:`, error);
@@ -203,10 +232,12 @@ export async function cleanupPartialDownload(videoId: string): Promise<void> {
 }
 
 export async function deleteVideo(videoId: string): Promise<void> {
-  const videosDir = getVideosDir();
-  const videoFile = new File(videosDir, `${videoId}.mp4`);
-  if (videoFile.exists) {
-    videoFile.delete();
+  const videoFileUri = getVideoFileUri(videoId);
+  if (!videoFileUri) return;
+
+  const info = await FileSystemLegacy.getInfoAsync(videoFileUri);
+  if (info.exists) {
+    await FileSystemLegacy.deleteAsync(videoFileUri, { idempotent: true });
   }
 }
 
@@ -214,16 +245,19 @@ export async function getStorageInfo(): Promise<{
   used: number;
   videoCount: number;
 }> {
-  const videosDir = await ensureVideosDir();
-  const files = videosDir.list();
+  const videosDirUri = await ensureVideosDir();
+  const files = await FileSystemLegacy.readDirectoryAsync(videosDirUri);
   let totalSize = 0;
   let videoCount = 0;
 
   for (const item of files) {
-    if (item instanceof File && item.name.endsWith(".mp4")) {
-      totalSize += item.size || 0;
-      videoCount++;
-    }
+    if (!item.endsWith(".mp4")) continue;
+
+    const fileInfo = await FileSystemLegacy.getInfoAsync(`${videosDirUri}/${item}`);
+    if (!fileInfo.exists || fileInfo.isDirectory) continue;
+
+    totalSize += fileInfo.size ?? 0;
+    videoCount++;
   }
 
   return {

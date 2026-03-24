@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
+  Alert,
   DeviceEventEmitter,
   PermissionsAndroid,
   Platform,
@@ -24,7 +26,12 @@ import {
   assertSyncCompatibility,
   SyncCompatibilityError,
 } from "../../services/sync-compatibility";
-import { getVideoLocalPath } from "../../services/downloader";
+import { getVideoFileUri } from "../../services/downloader";
+import {
+  getAllSavedPlaylistsWithProgress,
+  getSavedPlaylistWithItems,
+  type SavedPlaylistWithItems,
+} from "../../db/repositories/playlists";
 import {
   TVFocusPressable,
   type TVFocusPressableHandle,
@@ -69,6 +76,8 @@ type BaseGridCard = {
   thumbnailUrl?: string | null;
   type: "playlist" | "mylist" | "channel" | "history";
 };
+
+type OfflineSavedPlaylist = ReturnType<typeof getAllSavedPlaylistsWithProgress>[number];
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -156,7 +165,7 @@ function toStreamingVideos(
   serverUrl: string | null
 ) {
   return input.map<StreamingVideo>((item) => {
-    const localPath = getVideoLocalPath(item.id) ?? localPathByVideoId.get(item.id);
+    const localPath = getResolvedLocalPath(item.id, localPathByVideoId);
     return {
       id: item.id,
       title: item.title,
@@ -166,6 +175,27 @@ function toStreamingVideos(
       localPath,
     };
   });
+}
+
+function getResolvedLocalPath(
+  videoId: string,
+  localPathByVideoId: Map<string, string>
+): string | undefined {
+  return localPathByVideoId.get(videoId);
+}
+
+function toSavedPlaylistStreamingVideos(
+  playlist: SavedPlaylistWithItems,
+  localPathByVideoId: Map<string, string>
+) {
+  return playlist.items.map<StreamingVideo>((item) => ({
+    id: item.videoId,
+    title: item.title,
+    channelTitle: item.channelTitle,
+    duration: item.duration,
+    thumbnailUrl: item.thumbnailUrl ?? undefined,
+    localPath: getResolvedLocalPath(item.videoId, localPathByVideoId),
+  }));
 }
 
 function resolveThumbnailUrl(
@@ -192,7 +222,7 @@ function resolveThumbnailUrl(
 
 export default function TVHomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
-  const { offlineVideos } = useLibraryCatalog();
+  const { videos, offlineVideos } = useLibraryCatalog();
   const serverUrl = useConnectionStore((state) => state.serverUrl);
   const setServerUrl = useConnectionStore((state) => state.setServerUrl);
   const setServerName = useConnectionStore((state) => state.setServerName);
@@ -205,15 +235,16 @@ export default function TVHomeScreen() {
 
   const [mode, setMode] = useState<TVBrowseMode>("playlists");
 
-  const [connectionStage, setConnectionStage] = useState<ConnectionStage>(
-    serverUrl ? "connected" : "connecting"
-  );
+  const [connectionStage, setConnectionStage] = useState<ConnectionStage>("connecting");
   const [autoConnectAttempt, setAutoConnectAttempt] = useState(0);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const [playlists, setPlaylists] = useState<RemotePlaylist[]>([]);
   const [myLists, setMyLists] = useState<RemoteMyList[]>([]);
   const [channels, setChannels] = useState<RemoteChannel[]>([]);
+  const [offlineSavedPlaylists, setOfflineSavedPlaylists] = useState<
+    OfflineSavedPlaylist[]
+  >(() => getAllSavedPlaylistsWithProgress());
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
 
   const [pageOffsets, setPageOffsets] = useState<Record<TVBrowseMode, number>>({
@@ -255,14 +286,31 @@ export default function TVHomeScreen() {
 
   const localPathByVideoId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const video of offlineVideos) {
-      const localPath = getVideoLocalPath(video.id);
+    for (const video of videos) {
+      if (!video.localPath) continue;
+
+      const localPath = getVideoFileUri(video.id) ?? video.localPath;
       if (localPath) {
         map.set(video.id, localPath);
       }
     }
     return map;
-  }, [offlineVideos]);
+  }, [videos]);
+  const canStream = !!serverUrl && connectionStage === "connected";
+
+  const refreshOfflineCatalog = useCallback(() => {
+    setOfflineSavedPlaylists(getAllSavedPlaylistsWithProgress());
+  }, []);
+
+  useEffect(() => {
+    refreshOfflineCatalog();
+  }, [refreshOfflineCatalog, videos]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshOfflineCatalog();
+    }, [refreshOfflineCatalog])
+  );
 
   const clearAutoConnectTimer = useCallback(() => {
     if (autoConnectTimerRef.current) {
@@ -376,6 +424,7 @@ export default function TVHomeScreen() {
       return;
     }
 
+    setConnectionStage("connecting");
     setIsLoadingCatalog(true);
 
     try {
@@ -488,9 +537,128 @@ export default function TVHomeScreen() {
     [localPathByVideoId, serverUrl, startPlaylist, upsertRecentPlaylist]
   );
 
-  const playlistCards = useMemo<BaseGridCard[]>(
+  const playOfflineCollection = useCallback(
+    (savedPlaylistId: string) => {
+      const savedPlaylist = getSavedPlaylistWithItems(savedPlaylistId);
+      if (!savedPlaylist) {
+        return;
+      }
+
+      const playableVideos = toSavedPlaylistStreamingVideos(
+        savedPlaylist,
+        localPathByVideoId
+      ).filter((item) => !!item.localPath);
+
+      if (playableVideos.length === 0) {
+        Alert.alert(
+          "Offline mode",
+          "Download videos in this list first or reconnect to desktop to stream."
+        );
+        return;
+      }
+
+      const nextPlaylistId = `offline-${savedPlaylist.id}`;
+      upsertRecentPlaylist({
+        playlistId: nextPlaylistId,
+        title: savedPlaylist.title,
+        videos: playableVideos,
+        startIndex: 0,
+        serverUrl: null,
+      });
+      startPlaylist(nextPlaylistId, savedPlaylist.title, playableVideos, 0);
+      router.push(`/(tv)/player/${playableVideos[0].id}` as Href);
+    },
+    [localPathByVideoId, startPlaylist, upsertRecentPlaylist]
+  );
+
+  const offlinePlaylistCards = useMemo<BaseGridCard[]>(
     () =>
-      playlists.map((item) => ({
+      offlineSavedPlaylists
+        .filter((item) => item.type === "playlist")
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          subtitle: `${item.downloadedCount}/${item.totalCount} ready`,
+          thumbnailUrl: item.thumbnailUrl,
+          type: "playlist",
+        })),
+    [offlineSavedPlaylists]
+  );
+
+  const offlineMyListCards = useMemo<BaseGridCard[]>(
+    () =>
+      offlineSavedPlaylists
+        .filter((item) => item.type === "mylist")
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          subtitle: `${item.downloadedCount}/${item.totalCount} ready`,
+          thumbnailUrl: item.thumbnailUrl,
+          type: "mylist",
+        })),
+    [offlineSavedPlaylists]
+  );
+
+  const offlineChannelCards = useMemo<BaseGridCard[]>(() => {
+    const savedChannelsByTitle = new Map<string, OfflineSavedPlaylist>();
+    for (const item of offlineSavedPlaylists) {
+      if (item.type !== "channel") continue;
+      const channelTitle = item.title.trim();
+      if (!channelTitle) continue;
+      savedChannelsByTitle.set(channelTitle, item);
+    }
+
+    const cards = new Map<
+      string,
+      {
+        id: string;
+        title: string;
+        subtitle: string;
+        thumbnailUrl?: string | null;
+      }
+    >();
+
+    for (const video of offlineVideos) {
+      const channelTitle = video.channelTitle.trim() || "Unknown channel";
+      const existing = cards.get(channelTitle);
+      const savedChannel = savedChannelsByTitle.get(channelTitle);
+      const nextCount = existing ? Number.parseInt(existing.subtitle, 10) + 1 : 1;
+
+      cards.set(channelTitle, {
+        id: savedChannel?.sourceId ?? channelTitle,
+        title: channelTitle,
+        subtitle: `${nextCount} downloaded`,
+        thumbnailUrl: existing?.thumbnailUrl ?? savedChannel?.thumbnailUrl ?? video.thumbnailUrl,
+      });
+    }
+
+    for (const item of savedChannelsByTitle.values()) {
+      const channelTitle = item.title.trim() || "Unknown channel";
+      if (cards.has(channelTitle)) continue;
+
+      cards.set(channelTitle, {
+        id: item.sourceId ?? channelTitle,
+        title: channelTitle,
+        subtitle: `${item.downloadedCount}/${item.totalCount} ready`,
+        thumbnailUrl: item.thumbnailUrl,
+      });
+    }
+
+    return Array.from(cards.values())
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map((item) => ({
+        ...item,
+        type: "channel" as const,
+      }));
+  }, [offlineSavedPlaylists, offlineVideos]);
+
+  const playlistCards = useMemo<BaseGridCard[]>(
+    () => {
+      if (!canStream) {
+        return offlinePlaylistCards;
+      }
+
+      return playlists.map((item) => ({
         id: item.playlistId,
         title: item.title,
         subtitle: `${item.downloadedCount} ready`,
@@ -498,57 +666,78 @@ export default function TVHomeScreen() {
           resolveThumbnailUrl(serverUrl, item.thumbnailUrl) ??
           (serverUrl ? api.getPlaylistThumbnailUrl(serverUrl, item.playlistId) : null),
         type: "playlist",
-      })),
-    [playlists, serverUrl]
+      }));
+    },
+    [canStream, offlinePlaylistCards, playlists, serverUrl]
   );
 
   const myListCards = useMemo<BaseGridCard[]>(
-    () =>
-      myLists.map((item) => ({
+    () => {
+      if (!canStream) {
+        return offlineMyListCards;
+      }
+
+      return myLists.map((item) => ({
         id: item.id,
         title: item.name,
         subtitle: `${item.itemCount} videos`,
         thumbnailUrl: resolveThumbnailUrl(serverUrl, item.thumbnailUrl),
         type: "mylist",
-      })),
-    [myLists, serverUrl]
+      }));
+    },
+    [canStream, myLists, offlineMyListCards, serverUrl]
   );
 
   const channelCards = useMemo<BaseGridCard[]>(
-    () =>
-      channels.map((item) => ({
+    () => {
+      if (!canStream) {
+        return offlineChannelCards;
+      }
+
+      return channels.map((item) => ({
         id: item.channelId,
         title: item.channelTitle,
         subtitle: `${item.videoCount} videos`,
         thumbnailUrl: resolveThumbnailUrl(serverUrl, item.thumbnailUrl),
         type: "channel",
-      })),
-    [channels, serverUrl]
+      }));
+    },
+    [canStream, channels, offlineChannelCards, serverUrl]
   );
 
-  const historyCards = useMemo<BaseGridCard[]>(
-    () =>
-      recentPlaylists.map((item) => {
-        const total = item.videos.length;
-        const currentPosition = total > 0 ? Math.min(item.lastIndex + 1, total) : 0;
-        const currentVideo = item.videos[item.lastIndex];
-        const historyServerUrl = item.serverUrl ?? serverUrl ?? null;
-        const subtitle = currentVideo
-          ? `Resume ${currentPosition}/${total} - ${currentVideo.title}`
-          : `Resume ${currentPosition}/${total}`;
+  const historyCards = useMemo<BaseGridCard[]>(() => {
+    const cards: BaseGridCard[] = [];
 
-        return {
-          id: item.playlistId,
-          title: item.title,
-          subtitle,
-          thumbnailUrl:
-            resolveThumbnailUrl(historyServerUrl, currentVideo?.thumbnailUrl) ??
-            resolveThumbnailUrl(historyServerUrl, item.videos[0]?.thumbnailUrl),
-          type: "history",
-        };
-      }),
-    [recentPlaylists, serverUrl]
-  );
+    for (const item of recentPlaylists) {
+      const normalizedVideos = item.videos.map((video) => ({
+        ...video,
+        localPath: video.localPath ?? getResolvedLocalPath(video.id, localPathByVideoId),
+      }));
+      if (!canStream && !normalizedVideos.some((video) => !!video.localPath)) {
+        continue;
+      }
+
+      const total = item.videos.length;
+      const currentPosition = total > 0 ? Math.min(item.lastIndex + 1, total) : 0;
+      const currentVideo = normalizedVideos[item.lastIndex];
+      const historyServerUrl = canStream ? item.serverUrl ?? serverUrl ?? null : null;
+      const subtitle = currentVideo
+        ? `Resume ${currentPosition}/${total} - ${currentVideo.title}`
+        : `Resume ${currentPosition}/${total}`;
+
+      cards.push({
+        id: item.playlistId,
+        title: item.title,
+        subtitle,
+        thumbnailUrl:
+          resolveThumbnailUrl(historyServerUrl, currentVideo?.thumbnailUrl) ??
+          resolveThumbnailUrl(historyServerUrl, normalizedVideos[0]?.thumbnailUrl),
+        type: "history",
+      });
+    }
+
+    return cards;
+  }, [canStream, localPathByVideoId, recentPlaylists, serverUrl]);
 
   const activeCards = useMemo(() => {
     if (mode === "playlists") return playlistCards;
@@ -672,11 +861,19 @@ export default function TVHomeScreen() {
   const handleCardPress = useCallback(
     (card: BaseGridCard) => {
       if (card.type === "playlist") {
+        if (!canStream) {
+          playOfflineCollection(card.id);
+          return;
+        }
         void playRemoteCollection("playlist", card.id, card.title);
         return;
       }
 
       if (card.type === "mylist") {
+        if (!canStream) {
+          playOfflineCollection(card.id);
+          return;
+        }
         void playRemoteCollection("mylist", card.id, card.title);
         return;
       }
@@ -685,23 +882,45 @@ export default function TVHomeScreen() {
         const target = recentPlaylists.find((item) => item.playlistId === card.id);
         if (!target || target.videos.length === 0) return;
 
-        const safeIndex = Math.max(0, Math.min(target.lastIndex, target.videos.length - 1));
-        const safeVideo = target.videos[safeIndex];
+        const normalizedVideos = target.videos.map((video) => ({
+          ...video,
+          localPath: video.localPath ?? getResolvedLocalPath(video.id, localPathByVideoId),
+        }));
+        const playableVideos = canStream
+          ? normalizedVideos
+          : normalizedVideos.filter((video) => !!video.localPath);
+
+        if (playableVideos.length === 0) {
+          Alert.alert(
+            "Offline mode",
+            "Reconnect to desktop or download videos to resume this item."
+          );
+          return;
+        }
+
+        const preferredVideoId =
+          target.lastVideoId ?? target.videos[target.lastIndex]?.id ?? null;
+        const resumeIndex = preferredVideoId
+          ? playableVideos.findIndex((video) => video.id === preferredVideoId)
+          : -1;
+        const safeIndex = resumeIndex >= 0 ? resumeIndex : 0;
+        const safeVideo = playableVideos[safeIndex];
         if (!safeVideo) return;
 
+        const historyServerUrl = canStream ? target.serverUrl ?? serverUrl ?? null : null;
         upsertRecentPlaylist({
           playlistId: target.playlistId,
           title: target.title,
-          videos: target.videos,
+          videos: playableVideos,
           startIndex: safeIndex,
-          serverUrl: target.serverUrl,
+          serverUrl: historyServerUrl,
         });
         startPlaylist(
           target.playlistId,
           target.title,
-          target.videos,
+          playableVideos,
           safeIndex,
-          target.serverUrl ?? undefined
+          historyServerUrl ?? undefined
         );
         router.push(`/(tv)/player/${safeVideo.id}` as Href);
         return;
@@ -712,7 +931,16 @@ export default function TVHomeScreen() {
         params: { id: card.id, title: card.title },
       } as Href);
     },
-    [playRemoteCollection, recentPlaylists, startPlaylist, upsertRecentPlaylist]
+    [
+      canStream,
+      localPathByVideoId,
+      playOfflineCollection,
+      playRemoteCollection,
+      recentPlaylists,
+      serverUrl,
+      startPlaylist,
+      upsertRecentPlaylist,
+    ]
   );
 
   return (
@@ -826,9 +1054,7 @@ export default function TVHomeScreen() {
                 title={item.title}
                 subtitle={item.subtitle}
                 thumbnailUrl={item.thumbnailUrl}
-                hasTVPreferredFocus={
-                  connectionStage === "connected" && index === focusedGridIndex
-                }
+                hasTVPreferredFocus={index === focusedGridIndex}
                 onFocus={() => {
                   setIsGridFocused(true);
                   setFocusedGridIndex(index);

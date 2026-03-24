@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DeviceEventEmitter, View, Text, StyleSheet } from "react-native";
+import {
+  DeviceEventEmitter,
+  View,
+  Text,
+  StyleSheet,
+  findNodeHandle,
+} from "react-native";
 import { useLocalSearchParams, router, type Href } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,8 +14,11 @@ import { useConnectionStore } from "../../../stores/connection";
 import { usePlaybackStore } from "../../../stores/playback";
 import { useTVHistoryStore } from "../../../stores/tvHistory";
 import { api } from "../../../services/api";
-import { getVideoLocalPath } from "../../../services/downloader";
-import { TVFocusPressable } from "../../../components/tv/TVFocusPressable";
+import { getVideoFileUri } from "../../../services/downloader";
+import {
+  TVFocusPressable,
+  type TVFocusPressableHandle,
+} from "../../../components/tv/TVFocusPressable";
 import type { ServerDownloadStatus } from "../../../types";
 
 type PrefetchState = "idle" | "loading" | "ready" | "failed";
@@ -135,6 +144,7 @@ async function ensureServerVideoReady(
 
 export default function TVPlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const libraryVideos = useLibraryStore((state) => state.videos);
   const libraryVideo = useLibraryStore((state) => state.videos.find((item) => item.id === id));
   const serverUrl = useConnectionStore((state) => state.serverUrl);
 
@@ -153,9 +163,31 @@ export default function TVPlayerScreen() {
   const [prepareProgress, setPrepareProgress] = useState<number | null>(null);
   const [prepareRetryVersion, setPrepareRetryVersion] = useState(0);
   const [isRemoteNavVisible, setIsRemoteNavVisible] = useState(true);
+  const [shouldPreferRemoteNavFocus, setShouldPreferRemoteNavFocus] = useState(true);
   const navigationLockVideoIdRef = useRef<string | null>(null);
   const prefetchedNextVideoIdRef = useRef<string | null>(null);
   const remoteNavTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backNavRef = useRef<TVFocusPressableHandle | null>(null);
+  const prevNavRef = useRef<TVFocusPressableHandle | null>(null);
+  const nextNavRef = useRef<TVFocusPressableHandle | null>(null);
+  const [navNodeHandles, setNavNodeHandles] = useState<{
+    back?: number;
+    prev?: number;
+    next?: number;
+  }>({});
+
+  const localPathByVideoId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of libraryVideos) {
+      if (!item.localPath) continue;
+
+      const localPath = getVideoFileUri(item.id) ?? item.localPath;
+      if (localPath) {
+        map.set(item.id, localPath);
+      }
+    }
+    return map;
+  }, [libraryVideos]);
 
   const clearRemoteNavTimeout = useCallback(() => {
     if (remoteNavTimeoutRef.current) {
@@ -166,12 +198,18 @@ export default function TVPlayerScreen() {
 
   const showRemoteNav = useCallback(() => {
     setIsRemoteNavVisible(true);
+    setShouldPreferRemoteNavFocus(true);
     clearRemoteNavTimeout();
-    remoteNavTimeoutRef.current = setTimeout(() => {
-      setIsRemoteNavVisible(false);
-      remoteNavTimeoutRef.current = null;
-    }, REMOTE_NAV_TIMEOUT_MS);
   }, [clearRemoteNavTimeout]);
+
+  const handleRemoteNavFocus = useCallback(() => {
+    setShouldPreferRemoteNavFocus(false);
+    showRemoteNav();
+  }, [showRemoteNav]);
+
+  const handleRemoteNavBlur = useCallback(() => {
+    showRemoteNav();
+  }, [showRemoteNav]);
 
   const playlistIndex = useMemo(() => {
     if (!id) return -1;
@@ -185,8 +223,13 @@ export default function TVPlayerScreen() {
 
   const localPath = useMemo(() => {
     if (!id) return null;
-    return playlistVideo?.localPath ?? getVideoLocalPath(id) ?? libraryVideo?.localPath ?? null;
-  }, [id, playlistVideo?.localPath, libraryVideo?.localPath]);
+    return (
+      localPathByVideoId.get(id) ??
+      playlistVideo?.localPath ??
+      libraryVideo?.localPath ??
+      null
+    );
+  }, [id, libraryVideo?.localPath, localPathByVideoId, playlistVideo?.localPath]);
 
   useEffect(() => {
     if (!id) {
@@ -291,6 +334,14 @@ export default function TVPlayerScreen() {
   const playbackModeLabel = localPath ? "Offline" : "Streaming";
 
   useEffect(() => {
+    setNavNodeHandles({
+      back: backNavRef.current ? findNodeHandle(backNavRef.current) ?? undefined : undefined,
+      prev: prevNavRef.current ? findNodeHandle(prevNavRef.current) ?? undefined : undefined,
+      next: nextNavRef.current ? findNodeHandle(nextNavRef.current) ?? undefined : undefined,
+    });
+  }, [hasNext, hasPrevious, playlistIndex]);
+
+  useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
       "onHWKeyEvent",
       (event: { eventType?: string; eventKeyAction?: number }) => {
@@ -357,7 +408,8 @@ export default function TVPlayerScreen() {
         return;
       }
 
-      const nextLocalPath = nextVideo.localPath ?? getVideoLocalPath(nextVideo.id);
+      const nextLocalPath =
+        localPathByVideoId.get(nextVideo.id) ?? nextVideo.localPath;
       if (nextLocalPath) {
         prefetchedNextVideoIdRef.current = nextVideo.id;
         setPrefetchState("ready");
@@ -400,7 +452,7 @@ export default function TVPlayerScreen() {
       cancelled = true;
       abortController.abort();
     };
-  }, [effectiveServerUrl, nextVideo?.id, nextVideo?.localPath]);
+  }, [effectiveServerUrl, localPathByVideoId, nextVideo?.id, nextVideo?.localPath]);
 
   if (!id || !source) {
     return (
@@ -440,10 +492,8 @@ export default function TVPlayerScreen() {
 
   return (
     <View style={styles.fullscreenContainer}>
-      <VideoView player={player} style={styles.video} contentFit="contain" />
-
       {isRemoteNavVisible ? (
-        <SafeAreaView style={styles.overlaySafeArea} edges={["top"]}>
+        <SafeAreaView style={styles.chromeSafeArea} edges={["top", "left", "right"]}>
           <View style={styles.overlayTopRow}>
             <View style={styles.titleChip}>
               <Text style={styles.titleChipText} numberOfLines={1}>
@@ -460,40 +510,47 @@ export default function TVPlayerScreen() {
 
             <View style={styles.navFabRow}>
               <TVFocusPressable
+                ref={backNavRef}
                 style={styles.navFabButton}
                 onPress={() => {
                   showRemoteNav();
                   router.back();
                 }}
-                onFocus={showRemoteNav}
-                onBlur={showRemoteNav}
-                hasTVPreferredFocus={isRemoteNavVisible}
+                onFocus={handleRemoteNavFocus}
+                onBlur={handleRemoteNavBlur}
+                hasTVPreferredFocus={shouldPreferRemoteNavFocus}
+                nextFocusRight={hasPrevious ? navNodeHandles.prev : navNodeHandles.next}
               >
                 <Text style={styles.navFabText}>Back</Text>
               </TVFocusPressable>
 
               <TVFocusPressable
+                ref={prevNavRef}
                 style={[styles.navFabButton, !hasPrevious && styles.navButtonDisabled]}
                 onPress={() => {
                   showRemoteNav();
                   goToIndex(playlistIndex - 1);
                 }}
-                onFocus={showRemoteNav}
-                onBlur={showRemoteNav}
+                onFocus={handleRemoteNavFocus}
+                onBlur={handleRemoteNavBlur}
                 disabled={!hasPrevious}
+                nextFocusLeft={navNodeHandles.back}
+                nextFocusRight={navNodeHandles.next}
               >
                 <Text style={styles.navFabText}>Prev</Text>
               </TVFocusPressable>
 
               <TVFocusPressable
+                ref={nextNavRef}
                 style={[styles.navFabButton, !hasNext && styles.navButtonDisabled]}
                 onPress={() => {
                   showRemoteNav();
                   goToIndex(playlistIndex + 1);
                 }}
-                onFocus={showRemoteNav}
-                onBlur={showRemoteNav}
+                onFocus={handleRemoteNavFocus}
+                onBlur={handleRemoteNavBlur}
                 disabled={!hasNext}
+                nextFocusLeft={hasPrevious ? navNodeHandles.prev : navNodeHandles.back}
               >
                 <Text style={styles.navFabText}>Next</Text>
               </TVFocusPressable>
@@ -501,6 +558,18 @@ export default function TVPlayerScreen() {
           </View>
         </SafeAreaView>
       ) : null}
+
+      <View style={styles.videoFrame}>
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit="contain"
+          nativeControls={false}
+          surfaceType="textureView"
+          focusable={false}
+          importantForAccessibility="no-hide-descendants"
+        />
+      </View>
     </View>
   );
 }
@@ -515,6 +584,9 @@ const styles = StyleSheet.create({
   fullscreenContainer: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  videoFrame: {
+    flex: 1,
   },
   backButton: {
     borderRadius: 14,
@@ -541,16 +613,16 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   video: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: "#000",
   },
-  overlaySafeArea: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+  chromeSafeArea: {
     paddingHorizontal: 28,
-    paddingTop: 10,
+    paddingTop: 24,
+    paddingBottom: 18,
+    backgroundColor: "rgba(0, 0, 0, 0.82)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
   },
   overlayTopRow: {
     flexDirection: "row",
