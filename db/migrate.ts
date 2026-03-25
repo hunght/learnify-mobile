@@ -128,11 +128,13 @@ const MIGRATIONS = [
     type TEXT NOT NULL,
     source_id TEXT,
     item_count INTEGER DEFAULT 0,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
     saved_at INTEGER NOT NULL,
     updated_at INTEGER
   );
   `,
   `CREATE INDEX IF NOT EXISTS saved_playlists_type_idx ON saved_playlists (type);`,
+  `ALTER TABLE saved_playlists ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;`,
 
   // Saved playlist items table
   `
@@ -172,7 +174,10 @@ export async function runMigrations() {
     } catch (error) {
       // Ignore "already exists" errors for CREATE IF NOT EXISTS
       const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("already exists")) {
+      if (
+        !message.includes("already exists") &&
+        !message.includes("duplicate column name")
+      ) {
         console.error("[DB] Migration error:", message);
         throw error;
       }

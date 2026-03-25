@@ -23,11 +23,22 @@ import { api } from "../../services/api";
 import { startScanning, stopScanning } from "../../services/p2p/discovery";
 import { getAndroidEmulatorHostConnectUrls } from "../../services/android-emulator";
 import {
+  cacheRemoteChannels,
+  cacheRemoteCollectionVideos,
+  getCachedChannels,
+  getCachedMyLists,
+  getCachedPlaylists,
+  cacheRemoteMyLists,
+  cacheRemotePlaylists,
+  resolveRemoteAssetUrl,
+} from "../../services/browseCache";
+import {
   assertSyncCompatibility,
   SyncCompatibilityError,
 } from "../../services/sync-compatibility";
 import { getVideoFileUri } from "../../services/downloader";
 import {
+  buildCachedPlaylistId,
   getAllSavedPlaylistsWithProgress,
   getSavedPlaylistWithItems,
   type SavedPlaylistWithItems,
@@ -202,22 +213,7 @@ function resolveThumbnailUrl(
   serverUrl: string | null,
   thumbnailUrl?: string | null
 ): string | null {
-  const trimmed = thumbnailUrl?.trim();
-  if (!trimmed) return null;
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("//")) {
-    return `https:${trimmed}`;
-  }
-  if (!serverUrl) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("/")) {
-    return `${serverUrl}${trimmed}`;
-  }
-  return `${serverUrl}/${trimmed}`;
+  return resolveRemoteAssetUrl(serverUrl, thumbnailUrl);
 }
 
 export default function TVHomeScreen() {
@@ -244,7 +240,7 @@ export default function TVHomeScreen() {
   const [channels, setChannels] = useState<RemoteChannel[]>([]);
   const [offlineSavedPlaylists, setOfflineSavedPlaylists] = useState<
     OfflineSavedPlaylist[]
-  >(() => getAllSavedPlaylistsWithProgress());
+  >(() => getAllSavedPlaylistsWithProgress({ includeUnpinned: true }));
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
 
   const [pageOffsets, setPageOffsets] = useState<Record<TVBrowseMode, number>>({
@@ -299,7 +295,9 @@ export default function TVHomeScreen() {
   const canStream = !!serverUrl && connectionStage === "connected";
 
   const refreshOfflineCatalog = useCallback(() => {
-    setOfflineSavedPlaylists(getAllSavedPlaylistsWithProgress());
+    setOfflineSavedPlaylists(
+      getAllSavedPlaylistsWithProgress({ includeUnpinned: true })
+    );
   }, []);
 
   useEffect(() => {
@@ -428,18 +426,63 @@ export default function TVHomeScreen() {
     setIsLoadingCatalog(true);
 
     try {
-      const [playlistRes, myListRes, channelRes] = await Promise.all([
+      const [playlistResult, myListResult, channelResult] = await Promise.allSettled([
         api.getPlaylists(serverUrl),
         api.getMyLists(serverUrl),
         api.getChannels(serverUrl),
       ]);
+      let nextPlaylists = getCachedPlaylists();
+      let nextMyLists = getCachedMyLists();
+      let nextChannels = getCachedChannels();
+      const errorMessages: string[] = [];
+      let successCount = 0;
 
-      setPlaylists(playlistRes.playlists);
-      setMyLists(myListRes.mylists);
-      setChannels(channelRes.channels);
-      setCatalogError(null);
-      setConnectionStage("connected");
+      if (playlistResult.status === "fulfilled") {
+        nextPlaylists = await cacheRemotePlaylists(
+          serverUrl,
+          playlistResult.value.playlists
+        );
+        successCount += 1;
+      } else {
+        errorMessages.push(getErrorMessage(playlistResult.reason));
+      }
+
+      if (myListResult.status === "fulfilled") {
+        nextMyLists = await cacheRemoteMyLists(serverUrl, myListResult.value.mylists);
+        successCount += 1;
+      } else {
+        errorMessages.push(getErrorMessage(myListResult.reason));
+      }
+
+      if (channelResult.status === "fulfilled") {
+        nextChannels = await cacheRemoteChannels(
+          serverUrl,
+          channelResult.value.channels
+        );
+        successCount += 1;
+      } else {
+        errorMessages.push(getErrorMessage(channelResult.reason));
+      }
+
+      setPlaylists(nextPlaylists);
+      setMyLists(nextMyLists);
+      setChannels(nextChannels);
+      refreshOfflineCatalog();
+      setCatalogError(errorMessages[0] ?? null);
+
+      if (successCount > 0) {
+        setConnectionStage("connected");
+        return;
+      }
+
+      disconnect();
+      setConnectionStage("offline");
+      startAutoConnect(false);
     } catch (error) {
+      setPlaylists(getCachedPlaylists());
+      setMyLists(getCachedMyLists());
+      setChannels(getCachedChannels());
+      refreshOfflineCatalog();
       disconnect();
       setConnectionStage("offline");
       setCatalogError(getErrorMessage(error));
@@ -447,7 +490,7 @@ export default function TVHomeScreen() {
     } finally {
       setIsLoadingCatalog(false);
     }
-  }, [disconnect, serverUrl, startAutoConnect]);
+  }, [disconnect, refreshOfflineCatalog, serverUrl, startAutoConnect]);
 
   useEffect(() => {
     let cancelled = false;
@@ -506,42 +549,20 @@ export default function TVHomeScreen() {
     void loadRemoteCollections();
   }, [loadRemoteCollections, serverUrl, startAutoConnect]);
 
-  const playRemoteCollection = useCallback(
-    async (kind: "playlist" | "mylist", id: string, title: string) => {
-      if (!serverUrl) {
-        setConnectionStage("offline");
-        return;
-      }
-
-      const response =
-        kind === "playlist"
-          ? await api.getPlaylistVideos(serverUrl, id)
-          : await api.getMyListVideos(serverUrl, id);
-
-      const streamingVideos = toStreamingVideos(response.videos, localPathByVideoId, serverUrl);
-      if (streamingVideos.length === 0) {
-        return;
-      }
-
-      const nextPlaylistId = `${kind}-${id}`;
-      upsertRecentPlaylist({
-        playlistId: nextPlaylistId,
-        title,
-        videos: streamingVideos,
-        startIndex: 0,
-        serverUrl,
+  const playSavedPlaylistFromCache = useCallback(
+    (savedPlaylistId: string): boolean => {
+      const savedPlaylist = getSavedPlaylistWithItems(savedPlaylistId, {
+        includeUnpinned: true,
       });
-      startPlaylist(nextPlaylistId, title, streamingVideos, 0, serverUrl);
-      router.push(`/(tv)/player/${streamingVideos[0].id}` as Href);
-    },
-    [localPathByVideoId, serverUrl, startPlaylist, upsertRecentPlaylist]
-  );
-
-  const playOfflineCollection = useCallback(
-    (savedPlaylistId: string) => {
-      const savedPlaylist = getSavedPlaylistWithItems(savedPlaylistId);
       if (!savedPlaylist) {
-        return;
+        return false;
+      }
+      if (savedPlaylist.items.length === 0) {
+        Alert.alert(
+          "Offline mode",
+          "This list is not cached yet. Reconnect to desktop to load it first."
+        );
+        return true;
       }
 
       const playableVideos = toSavedPlaylistStreamingVideos(
@@ -554,7 +575,7 @@ export default function TVHomeScreen() {
           "Offline mode",
           "Download videos in this list first or reconnect to desktop to stream."
         );
-        return;
+        return true;
       }
 
       const nextPlaylistId = `offline-${savedPlaylist.id}`;
@@ -567,8 +588,100 @@ export default function TVHomeScreen() {
       });
       startPlaylist(nextPlaylistId, savedPlaylist.title, playableVideos, 0);
       router.push(`/(tv)/player/${playableVideos[0].id}` as Href);
+      return true;
     },
     [localPathByVideoId, startPlaylist, upsertRecentPlaylist]
+  );
+
+  const playRemoteCollection = useCallback(
+    async (kind: "playlist" | "mylist", id: string, title: string) => {
+      if (!serverUrl) {
+        setConnectionStage("offline");
+        return;
+      }
+
+      try {
+        const response =
+          kind === "playlist"
+            ? await api.getPlaylistVideos(serverUrl, id)
+            : await api.getMyListVideos(serverUrl, id);
+        const playlistMeta =
+          kind === "playlist"
+            ? playlists.find((item) => item.playlistId === id)
+            : undefined;
+        const myListMeta =
+          kind === "mylist" ? myLists.find((item) => item.id === id) : undefined;
+        const normalizedVideos = await cacheRemoteCollectionVideos(serverUrl, {
+          kind,
+          id,
+          title,
+          sourceId: kind === "playlist" ? playlistMeta?.channelId : id,
+          thumbnailUrl:
+            kind === "playlist" ? playlistMeta?.thumbnailUrl : myListMeta?.thumbnailUrl,
+          thumbnailFallbackUrl:
+            kind === "playlist" ? api.getPlaylistThumbnailUrl(serverUrl, id) : null,
+          itemCount:
+            kind === "playlist" ? playlistMeta?.itemCount : myListMeta?.itemCount,
+          videos: response.videos,
+        });
+        refreshOfflineCatalog();
+
+        const streamingVideos = toStreamingVideos(
+          normalizedVideos,
+          localPathByVideoId,
+          serverUrl
+        );
+        if (streamingVideos.length === 0) {
+          return;
+        }
+
+        const nextPlaylistId = `${kind}-${id}`;
+        upsertRecentPlaylist({
+          playlistId: nextPlaylistId,
+          title,
+          videos: streamingVideos,
+          startIndex: 0,
+          serverUrl,
+        });
+        startPlaylist(nextPlaylistId, title, streamingVideos, 0, serverUrl);
+        router.push(`/(tv)/player/${streamingVideos[0].id}` as Href);
+      } catch (error) {
+        disconnect();
+        setConnectionStage("offline");
+        setCatalogError(getErrorMessage(error));
+        refreshOfflineCatalog();
+        startAutoConnect(false);
+
+        const cachedPlaylistId = buildCachedPlaylistId(kind, id);
+        if (playSavedPlaylistFromCache(cachedPlaylistId)) {
+          return;
+        }
+
+        Alert.alert(
+          "Playback unavailable",
+          "Reconnect to desktop or download videos in this list first."
+        );
+      }
+    },
+    [
+      disconnect,
+      localPathByVideoId,
+      myLists,
+      playlists,
+      playSavedPlaylistFromCache,
+      refreshOfflineCatalog,
+      serverUrl,
+      startAutoConnect,
+      startPlaylist,
+      upsertRecentPlaylist,
+    ]
+  );
+
+  const playOfflineCollection = useCallback(
+    (savedPlaylistId: string) => {
+      playSavedPlaylistFromCache(savedPlaylistId);
+    },
+    [playSavedPlaylistFromCache]
   );
 
   const offlinePlaylistCards = useMemo<BaseGridCard[]>(
@@ -600,56 +713,54 @@ export default function TVHomeScreen() {
   );
 
   const offlineChannelCards = useMemo<BaseGridCard[]>(() => {
-    const savedChannelsByTitle = new Map<string, OfflineSavedPlaylist>();
-    for (const item of offlineSavedPlaylists) {
-      if (item.type !== "channel") continue;
-      const channelTitle = item.title.trim();
-      if (!channelTitle) continue;
-      savedChannelsByTitle.set(channelTitle, item);
-    }
+    const savedChannels = offlineSavedPlaylists.filter(
+      (item) => item.type === "channel"
+    );
+    const cards: BaseGridCard[] = [];
+    const seenChannelTitles = new Set<string>();
 
-    const cards = new Map<
-      string,
-      {
-        id: string;
-        title: string;
-        subtitle: string;
-        thumbnailUrl?: string | null;
-      }
-    >();
-
-    for (const video of offlineVideos) {
-      const channelTitle = video.channelTitle.trim() || "Unknown channel";
-      const existing = cards.get(channelTitle);
-      const savedChannel = savedChannelsByTitle.get(channelTitle);
-      const nextCount = existing ? Number.parseInt(existing.subtitle, 10) + 1 : 1;
-
-      cards.set(channelTitle, {
-        id: savedChannel?.sourceId ?? channelTitle,
-        title: channelTitle,
-        subtitle: `${nextCount} downloaded`,
-        thumbnailUrl: existing?.thumbnailUrl ?? savedChannel?.thumbnailUrl ?? video.thumbnailUrl,
-      });
-    }
-
-    for (const item of savedChannelsByTitle.values()) {
+    for (const item of savedChannels) {
       const channelTitle = item.title.trim() || "Unknown channel";
-      if (cards.has(channelTitle)) continue;
-
-      cards.set(channelTitle, {
+      seenChannelTitles.add(channelTitle);
+      cards.push({
         id: item.sourceId ?? channelTitle,
         title: channelTitle,
         subtitle: `${item.downloadedCount}/${item.totalCount} ready`,
         thumbnailUrl: item.thumbnailUrl,
+        type: "channel",
       });
     }
 
-    return Array.from(cards.values())
-      .sort((a, b) => a.title.localeCompare(b.title))
-      .map((item) => ({
-        ...item,
-        type: "channel" as const,
-      }));
+    const localOnlyCounts = new Map<
+      string,
+      { count: number; thumbnailUrl?: string | null }
+    >();
+    for (const video of offlineVideos) {
+      const channelTitle = video.channelTitle.trim() || "Unknown channel";
+      if (seenChannelTitles.has(channelTitle)) {
+        continue;
+      }
+
+      const existing = localOnlyCounts.get(channelTitle);
+      localOnlyCounts.set(channelTitle, {
+        count: (existing?.count ?? 0) + 1,
+        thumbnailUrl: existing?.thumbnailUrl ?? video.thumbnailUrl,
+      });
+    }
+
+    for (const [channelTitle, info] of Array.from(localOnlyCounts.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0])
+    )) {
+      cards.push({
+        id: channelTitle,
+        title: channelTitle,
+        subtitle: `${info.count} downloaded`,
+        thumbnailUrl: info.thumbnailUrl,
+        type: "channel",
+      });
+    }
+
+    return cards;
   }, [offlineSavedPlaylists, offlineVideos]);
 
   const playlistCards = useMemo<BaseGridCard[]>(
@@ -745,6 +856,28 @@ export default function TVHomeScreen() {
     if (mode === "history") return historyCards;
     return channelCards;
   }, [channelCards, historyCards, mode, myListCards, playlistCards]);
+  const hasAnyOfflineCache =
+    offlineSavedPlaylists.length > 0 || offlineVideos.length > 0 || recentPlaylists.length > 0;
+  const emptyStateText = useMemo(() => {
+    if (!hasAnyOfflineCache && connectionStage === "connecting") {
+      return discoveredCount > 0
+        ? `Searching nearby desktop... (${discoveredCount})`
+        : emulatorHostConnectUrls.length > 0
+          ? "Searching nearby desktop... Trying emulator host..."
+          : "Searching nearby desktop... (0)";
+    }
+
+    if (mode === "playlists") return "No cached playlists yet";
+    if (mode === "mylists") return "No cached my lists yet";
+    if (mode === "channels") return "No cached channels yet";
+    return "No history yet";
+  }, [
+    connectionStage,
+    discoveredCount,
+    emulatorHostConnectUrls.length,
+    hasAnyOfflineCache,
+    mode,
+  ]);
 
   const currentOffset = pageOffsets[mode];
   const maxOffset = Math.max(0, activeCards.length - pageSize);
@@ -1015,15 +1148,7 @@ export default function TVHomeScreen() {
 
       {!isLoadingCatalog && activeCards.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            {connectionStage === "connecting"
-              ? discoveredCount > 0
-                ? `Searching nearby desktop... (${discoveredCount})`
-                : emulatorHostConnectUrls.length > 0
-                  ? "Searching nearby desktop... Trying emulator host..."
-                  : "Searching nearby desktop... (0)"
-              : "No data yet"}
-          </Text>
+          <Text style={styles.emptyText}>{emptyStateText}</Text>
           {catalogError ? <Text style={styles.errorText}>{catalogError}</Text> : null}
         </View>
       ) : (

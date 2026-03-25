@@ -11,6 +11,12 @@ import type {
   BrowseTab,
 } from "../types";
 import { api } from "../services/api";
+import {
+  cacheRemoteChannels,
+  cacheRemoteCollectionVideos,
+  cacheRemoteMyLists,
+  cacheRemotePlaylists,
+} from "../services/browseCache";
 
 type FavoriteEntityType = "video" | "custom_playlist" | "channel_playlist";
 
@@ -166,7 +172,8 @@ export const useSyncStore = create<SyncStore>()(
       fetchChannels: async (serverUrl) => {
         set({ isLoadingChannels: true, channelsError: null });
         try {
-          const { channels } = await api.getChannels(serverUrl);
+          const { channels: remoteChannels } = await api.getChannels(serverUrl);
+          const channels = await cacheRemoteChannels(serverUrl, remoteChannels);
           set({ channels, isLoadingChannels: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Failed to fetch channels";
@@ -181,7 +188,8 @@ export const useSyncStore = create<SyncStore>()(
       fetchPlaylists: async (serverUrl) => {
         set({ isLoadingPlaylists: true, playlistsError: null });
         try {
-          const { playlists } = await api.getPlaylists(serverUrl);
+          const { playlists: remotePlaylists } = await api.getPlaylists(serverUrl);
+          const playlists = await cacheRemotePlaylists(serverUrl, remotePlaylists);
           set({ playlists, isLoadingPlaylists: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Failed to fetch playlists";
@@ -225,7 +233,19 @@ export const useSyncStore = create<SyncStore>()(
           selectedVideoIds: new Set(),
         });
         try {
-          const { videos } = await api.getChannelVideos(serverUrl, channel.channelId);
+          const { videos: remoteVideos } = await api.getChannelVideos(
+            serverUrl,
+            channel.channelId
+          );
+          const videos = await cacheRemoteCollectionVideos(serverUrl, {
+            kind: "channel",
+            id: channel.channelId,
+            title: channel.channelTitle,
+            sourceId: channel.channelId,
+            thumbnailUrl: channel.thumbnailUrl,
+            itemCount: channel.videoCount,
+            videos: remoteVideos,
+          });
           set((state) => ({
             channelVideos: videos,
             channelVideosCache: {
@@ -258,7 +278,23 @@ export const useSyncStore = create<SyncStore>()(
           selectedVideoIds: new Set(),
         });
         try {
-          const { videos } = await api.getPlaylistVideos(serverUrl, playlist.playlistId);
+          const { videos: remoteVideos } = await api.getPlaylistVideos(
+            serverUrl,
+            playlist.playlistId
+          );
+          const videos = await cacheRemoteCollectionVideos(serverUrl, {
+            kind: "playlist",
+            id: playlist.playlistId,
+            title: playlist.title,
+            sourceId: playlist.channelId,
+            thumbnailUrl: playlist.thumbnailUrl,
+            thumbnailFallbackUrl: api.getPlaylistThumbnailUrl(
+              serverUrl,
+              playlist.playlistId
+            ),
+            itemCount: playlist.itemCount,
+            videos: remoteVideos,
+          });
           set((state) => ({
             playlistVideos: videos,
             playlistVideosCache: {
@@ -296,8 +332,9 @@ export const useSyncStore = create<SyncStore>()(
       fetchMyLists: async (serverUrl) => {
         set({ isLoadingMyLists: true, myListsError: null });
         try {
-          const { mylists } = await api.getMyLists(serverUrl);
-          set({ myLists: mylists, isLoadingMyLists: false });
+          const { mylists: remoteMyLists } = await api.getMyLists(serverUrl);
+          const myLists = await cacheRemoteMyLists(serverUrl, remoteMyLists);
+          set({ myLists, isLoadingMyLists: false });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Failed to fetch my lists";
@@ -323,7 +360,16 @@ export const useSyncStore = create<SyncStore>()(
           selectedVideoIds: new Set(),
         });
         try {
-          const { videos } = await api.getMyListVideos(serverUrl, myList.id);
+          const { videos: remoteVideos } = await api.getMyListVideos(serverUrl, myList.id);
+          const videos = await cacheRemoteCollectionVideos(serverUrl, {
+            kind: "mylist",
+            id: myList.id,
+            title: myList.name,
+            sourceId: myList.id,
+            thumbnailUrl: myList.thumbnailUrl,
+            itemCount: myList.itemCount,
+            videos: remoteVideos,
+          });
           set((state) => ({
             myListVideos: videos,
             myListVideosCache: {

@@ -143,6 +143,7 @@ export const savedPlaylists = sqliteTable(
     type: text("type").notNull(), // "channel" | "playlist" | "subscription" | "mylist"
     sourceId: text("source_id"), // Channel ID or source identifier
     itemCount: integer("item_count").default(0),
+    isPinned: integer("is_pinned", { mode: "boolean" }).notNull().default(false),
     savedAt: integer("saved_at").notNull(),
     updatedAt: integer("updated_at"),
   },

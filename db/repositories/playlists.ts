@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, savedPlaylists, savedPlaylistItems, videos } from "../index";
 import type {
   SavedPlaylist,
@@ -16,7 +16,11 @@ export interface PlaylistVideoInfo {
   title: string;
   channelTitle: string;
   duration: number;
-  thumbnailUrl?: string;
+  thumbnailUrl?: string | null;
+}
+
+export interface SavedPlaylistQueryOptions {
+  includeUnpinned?: boolean;
 }
 
 export interface SavedPlaylistWithItems extends SavedPlaylist {
@@ -28,37 +32,203 @@ export interface SavedPlaylistWithItems extends SavedPlaylist {
   >;
 }
 
+export type BrowseCachePlaylistKind = "channel" | "playlist" | "mylist";
+
+interface UpsertSavedPlaylistInput {
+  id: string;
+  title: string;
+  type: string;
+  sourceId?: string | null;
+  thumbnailUrl?: string | null;
+  itemCount?: number | null;
+  pin?: boolean;
+  savedAt?: number | null;
+  updatedAt?: number | null;
+}
+
+function getRawSavedPlaylistById(id: string): SavedPlaylist | undefined {
+  return getDb().select().from(savedPlaylists).where(eq(savedPlaylists.id, id)).get();
+}
+
+function getPlaylistVisibilityCondition(
+  id: string,
+  options?: SavedPlaylistQueryOptions
+) {
+  if (options?.includeUnpinned) {
+    return eq(savedPlaylists.id, id);
+  }
+
+  return and(eq(savedPlaylists.id, id), eq(savedPlaylists.isPinned, true));
+}
+
+function getPlaylistItemsInternal(playlistId: string): SavedPlaylistItem[] {
+  return getDb()
+    .select()
+    .from(savedPlaylistItems)
+    .where(eq(savedPlaylistItems.playlistId, playlistId))
+    .orderBy(savedPlaylistItems.position)
+    .all();
+}
+
+function upsertSavedPlaylistRecord({
+  id,
+  title,
+  type,
+  sourceId,
+  thumbnailUrl,
+  itemCount,
+  pin,
+  savedAt,
+  updatedAt,
+}: UpsertSavedPlaylistInput): SavedPlaylist {
+  const now = Date.now();
+  const existing = getRawSavedPlaylistById(id);
+
+  const nextIsPinned = pin ?? existing?.isPinned ?? false;
+  const nextSavedAtOverride =
+    typeof savedAt === "number" && Number.isFinite(savedAt)
+      ? Math.max(0, Math.floor(savedAt))
+      : null;
+  const nextSavedAt =
+    nextSavedAtOverride ??
+    (nextIsPinned && !existing?.isPinned ? now : existing?.savedAt ?? now);
+  const nextUpdatedAt =
+    typeof updatedAt === "number" && Number.isFinite(updatedAt)
+      ? Math.max(0, Math.floor(updatedAt))
+      : now;
+  const nextItemCount =
+    typeof itemCount === "number" && Number.isFinite(itemCount)
+      ? Math.max(0, Math.floor(itemCount))
+      : existing?.itemCount ?? 0;
+  const values: Omit<NewSavedPlaylist, "id"> = {
+    title,
+    type,
+    sourceId: sourceId ?? existing?.sourceId ?? null,
+    thumbnailUrl: thumbnailUrl ?? existing?.thumbnailUrl ?? null,
+    itemCount: nextItemCount,
+    isPinned: nextIsPinned,
+    savedAt: nextSavedAt,
+    updatedAt: nextUpdatedAt,
+  };
+
+  if (existing) {
+    getDb().update(savedPlaylists).set(values).where(eq(savedPlaylists.id, id)).run();
+  } else {
+    getDb()
+      .insert(savedPlaylists)
+      .values({
+        id,
+        ...values,
+      })
+      .run();
+  }
+
+  return getRawSavedPlaylistById(id)!;
+}
+
+function upsertPlaylistItem(
+  playlistId: string,
+  video: PlaylistVideoInfo,
+  position: number,
+  existing?: SavedPlaylistItem
+) {
+  const now = Date.now();
+  const values: Omit<NewSavedPlaylistItem, "id"> = {
+    playlistId,
+    videoId: video.videoId,
+    title: video.title,
+    channelTitle: video.channelTitle,
+    duration: video.duration,
+    thumbnailUrl: video.thumbnailUrl ?? existing?.thumbnailUrl ?? null,
+    position,
+    createdAt: existing?.createdAt ?? now,
+  };
+
+  if (existing) {
+    getDb()
+      .update(savedPlaylistItems)
+      .set(values)
+      .where(eq(savedPlaylistItems.id, existing.id))
+      .run();
+    return;
+  }
+
+  getDb()
+    .insert(savedPlaylistItems)
+    .values({
+      id: generateId(),
+      ...values,
+    })
+    .run();
+}
+
+function replacePlaylistItems(playlistId: string, videoInfos: PlaylistVideoInfo[]) {
+  getDb().delete(savedPlaylistItems).where(eq(savedPlaylistItems.playlistId, playlistId)).run();
+
+  videoInfos.forEach((video, index) => {
+    upsertPlaylistItem(playlistId, video, index);
+  });
+}
+
+export function buildCachedPlaylistId(
+  kind: BrowseCachePlaylistKind,
+  sourceId: string
+): string {
+  return `${kind}_${sourceId}`;
+}
+
 // Get all saved playlists
-export function getAllSavedPlaylists(): SavedPlaylist[] {
-  return getDb().select().from(savedPlaylists).all();
+export function getAllSavedPlaylists(
+  options?: SavedPlaylistQueryOptions
+): SavedPlaylist[] {
+  if (options?.includeUnpinned) {
+    return getDb()
+      .select()
+      .from(savedPlaylists)
+      .orderBy(
+        desc(savedPlaylists.savedAt),
+        desc(savedPlaylists.updatedAt),
+        savedPlaylists.title
+      )
+      .all();
+  }
+
+  return getDb()
+    .select()
+    .from(savedPlaylists)
+    .where(eq(savedPlaylists.isPinned, true))
+    .orderBy(
+      desc(savedPlaylists.savedAt),
+      desc(savedPlaylists.updatedAt),
+      savedPlaylists.title
+    )
+    .all();
 }
 
 // Get saved playlist by ID
-export function getSavedPlaylistById(id: string): SavedPlaylist | undefined {
-  return getDb().select().from(savedPlaylists).where(eq(savedPlaylists.id, id)).get();
+export function getSavedPlaylistById(
+  id: string,
+  options?: SavedPlaylistQueryOptions
+): SavedPlaylist | undefined {
+  return getDb()
+    .select()
+    .from(savedPlaylists)
+    .where(getPlaylistVisibilityCondition(id, options))
+    .get();
 }
 
 // Get saved playlist with all items and download status
 export function getSavedPlaylistWithItems(
-  id: string
+  id: string,
+  options?: SavedPlaylistQueryOptions
 ): SavedPlaylistWithItems | undefined {
-  const playlist = getSavedPlaylistById(id);
+  const playlist = getSavedPlaylistById(id, options);
   if (!playlist) return undefined;
 
-  const items = getDb()
-    .select()
-    .from(savedPlaylistItems)
-    .where(eq(savedPlaylistItems.playlistId, id))
-    .orderBy(savedPlaylistItems.position)
-    .all();
+  const items = getPlaylistItemsInternal(id);
 
-  // Check which videos are downloaded locally
   const itemsWithStatus = items.map((item) => {
-    const video = getDb()
-      .select()
-      .from(videos)
-      .where(eq(videos.id, item.videoId))
-      .get();
+    const video = getDb().select().from(videos).where(eq(videos.id, item.videoId)).get();
 
     return {
       ...item,
@@ -74,28 +244,22 @@ export function getSavedPlaylistWithItems(
 }
 
 // Get all saved playlists with item counts and download progress
-export function getAllSavedPlaylistsWithProgress(): Array<
+export function getAllSavedPlaylistsWithProgress(
+  options?: SavedPlaylistQueryOptions
+): Array<
   SavedPlaylist & {
     downloadedCount: number;
     totalCount: number;
   }
 > {
-  const playlists = getAllSavedPlaylists();
+  const playlists = getAllSavedPlaylists(options);
 
   return playlists.map((playlist) => {
-    const items = getDb()
-      .select()
-      .from(savedPlaylistItems)
-      .where(eq(savedPlaylistItems.playlistId, playlist.id))
-      .all();
+    const items = getPlaylistItemsInternal(playlist.id);
 
     let downloadedCount = 0;
     for (const item of items) {
-      const video = getDb()
-        .select()
-        .from(videos)
-        .where(eq(videos.id, item.videoId))
-        .get();
+      const video = getDb().select().from(videos).where(eq(videos.id, item.videoId)).get();
       if (video?.localPath) {
         downloadedCount++;
       }
@@ -104,7 +268,7 @@ export function getAllSavedPlaylistsWithProgress(): Array<
     return {
       ...playlist,
       downloadedCount,
-      totalCount: items.length,
+      totalCount: Math.max(playlist.itemCount ?? 0, items.length),
     };
   });
 }
@@ -118,80 +282,122 @@ export function savePlaylist(
   thumbnailUrl: string | null,
   videoInfos: PlaylistVideoInfo[]
 ): SavedPlaylist {
-  const now = Date.now();
-
-  // Check if playlist already exists
-  const existing = getSavedPlaylistById(playlistId);
-
-  if (existing) {
-    // Update existing playlist
-    getDb().update(savedPlaylists)
-      .set({
-        title,
-        thumbnailUrl,
-        itemCount: videoInfos.length,
-        updatedAt: now,
-      })
-      .where(eq(savedPlaylists.id, playlistId))
-      .run();
-
-    // Delete old items and insert new ones
-    getDb().delete(savedPlaylistItems)
-      .where(eq(savedPlaylistItems.playlistId, playlistId))
-      .run();
-  } else {
-    // Insert new playlist
-    getDb().insert(savedPlaylists)
-      .values({
-        id: playlistId,
-        title,
-        type,
-        sourceId,
-        thumbnailUrl,
-        itemCount: videoInfos.length,
-        savedAt: now,
-        updatedAt: now,
-      })
-      .run();
-  }
-
-  // Insert playlist items
-  videoInfos.forEach((video, index) => {
-    getDb().insert(savedPlaylistItems)
-      .values({
-        id: generateId(),
-        playlistId,
-        videoId: video.videoId,
-        title: video.title,
-        channelTitle: video.channelTitle,
-        duration: video.duration,
-        thumbnailUrl: video.thumbnailUrl ?? null,
-        position: index,
-        createdAt: now,
-      })
-      .run();
+  const playlist = upsertSavedPlaylistRecord({
+    id: playlistId,
+    title,
+    type,
+    sourceId,
+    thumbnailUrl,
+    itemCount: videoInfos.length,
+    pin: true,
   });
 
-  return getSavedPlaylistById(playlistId)!;
+  replacePlaylistItems(playlistId, videoInfos);
+
+  return playlist;
+}
+
+export function upsertBrowseCachePlaylist(input: {
+  playlistId: string;
+  title: string;
+  type: BrowseCachePlaylistKind;
+  sourceId?: string | null;
+  thumbnailUrl?: string | null;
+  itemCount?: number | null;
+  savedAt?: number | null;
+}): SavedPlaylist {
+  return upsertSavedPlaylistRecord({
+    id: input.playlistId,
+    title: input.title,
+    type: input.type,
+    sourceId: input.sourceId,
+    thumbnailUrl: input.thumbnailUrl,
+    itemCount: input.itemCount,
+    savedAt: input.savedAt,
+  });
+}
+
+export function mergeBrowseCachePlaylistItems(
+  playlistId: string,
+  videoInfos: PlaylistVideoInfo[]
+) {
+  const playlist = getRawSavedPlaylistById(playlistId);
+  if (!playlist) {
+    throw new Error(`Playlist cache row not found: ${playlistId}`);
+  }
+
+  const existingItems = getPlaylistItemsInternal(playlistId);
+  const existingByVideoId = new Map(existingItems.map((item) => [item.videoId, item]));
+  const seenVideoIds = new Set<string>();
+  let nextPosition = 0;
+
+  for (const video of videoInfos) {
+    if (seenVideoIds.has(video.videoId)) {
+      continue;
+    }
+
+    seenVideoIds.add(video.videoId);
+    upsertPlaylistItem(
+      playlistId,
+      video,
+      nextPosition,
+      existingByVideoId.get(video.videoId)
+    );
+    nextPosition += 1;
+  }
+
+  for (const item of existingItems) {
+    if (seenVideoIds.has(item.videoId)) {
+      continue;
+    }
+
+    getDb()
+      .update(savedPlaylistItems)
+      .set({ position: nextPosition })
+      .where(eq(savedPlaylistItems.id, item.id))
+      .run();
+    nextPosition += 1;
+  }
+
+  getDb()
+    .update(savedPlaylists)
+    .set({
+      itemCount: Math.max(playlist.itemCount ?? 0, videoInfos.length, existingItems.length),
+      updatedAt: Date.now(),
+    })
+    .where(eq(savedPlaylists.id, playlistId))
+    .run();
 }
 
 // Delete a saved playlist
 export function deleteSavedPlaylist(id: string) {
-  getDb().delete(savedPlaylists).where(eq(savedPlaylists.id, id)).run();
+  const existing = getRawSavedPlaylistById(id);
+  if (!existing) return;
+
+  getDb()
+    .update(savedPlaylists)
+    .set({
+      isPinned: false,
+      updatedAt: Date.now(),
+    })
+    .where(eq(savedPlaylists.id, id))
+    .run();
 }
 
 // Check if a playlist is saved
 export function isPlaylistSaved(id: string): boolean {
-  const playlist = getSavedPlaylistById(id);
-  return !!playlist;
+  const playlist = getRawSavedPlaylistById(id);
+  return !!playlist?.isPinned;
 }
 
 // Get playlist items for a saved playlist
-export function getPlaylistItems(playlistId: string): SavedPlaylistItem[] {
-  return getDb()
-    .select()
-    .from(savedPlaylistItems)
-    .where(eq(savedPlaylistItems.playlistId, playlistId))
-    .orderBy(savedPlaylistItems.position)
-    .all();
+export function getPlaylistItems(
+  playlistId: string,
+  options?: SavedPlaylistQueryOptions
+): SavedPlaylistItem[] {
+  if (!getSavedPlaylistById(playlistId, options)) {
+    return [];
+  }
+
+  return getPlaylistItemsInternal(playlistId);
 }

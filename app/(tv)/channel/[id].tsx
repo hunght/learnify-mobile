@@ -16,8 +16,14 @@ import { useConnectionStore } from "../../../stores/connection";
 import { usePlaybackStore, type StreamingVideo } from "../../../stores/playback";
 import { useTVHistoryStore } from "../../../stores/tvHistory";
 import { api } from "../../../services/api";
+import {
+  cacheRemoteCollectionVideos,
+  cacheRemotePlaylists,
+  resolveRemoteAssetUrl,
+} from "../../../services/browseCache";
 import { getVideoFileUri } from "../../../services/downloader";
 import {
+  buildCachedPlaylistId,
   getAllSavedPlaylistsWithProgress,
   getSavedPlaylistWithItems,
   type SavedPlaylistWithItems,
@@ -51,6 +57,14 @@ type BaseGridCard = {
   subtitle: string;
   thumbnailUrl?: string | null;
   type: "playlist" | "video";
+};
+
+type OfflineSavedPlaylist = ReturnType<typeof getAllSavedPlaylistsWithProgress>[number];
+
+type OfflineChannelFallback = {
+  playlists: RemotePlaylist[];
+  videos: RemoteVideoWithStatus[];
+  hasChannelSummary: boolean;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -121,19 +135,43 @@ function toSavedPlaylistChannelVideos(
   }));
 }
 
+function toOfflineChannelPlaylists(
+  playlists: OfflineSavedPlaylist[]
+): RemotePlaylist[] {
+  return playlists.map((playlist) => ({
+    playlistId: playlist.id.startsWith("playlist_")
+      ? playlist.id.slice("playlist_".length)
+      : playlist.id,
+    title: playlist.title,
+    thumbnailUrl: playlist.thumbnailUrl ?? null,
+    itemCount: playlist.totalCount,
+    channelId: playlist.sourceId ?? null,
+    type: "custom",
+    downloadedCount: playlist.downloadedCount,
+  }));
+}
+
 function getOfflineChannelFallback(
   channelId: string | undefined,
   channelTitle: string,
   videos: Video[],
   localPathByVideoId: Map<string, string>
-) {
-  const savedChannelSummary = getAllSavedPlaylistsWithProgress().find(
+): OfflineChannelFallback {
+  const savedPlaylists = getAllSavedPlaylistsWithProgress({
+    includeUnpinned: true,
+  });
+  const savedChannelSummary = savedPlaylists.find(
     (item) =>
       item.type === "channel" &&
       ((channelId ? item.sourceId === channelId : false) || item.title === channelTitle)
   );
+  const savedChannelPlaylists = channelId
+    ? savedPlaylists.filter(
+        (item) => item.type === "playlist" && item.sourceId === channelId
+      )
+    : [];
   const savedChannel = savedChannelSummary
-    ? getSavedPlaylistWithItems(savedChannelSummary.id)
+    ? getSavedPlaylistWithItems(savedChannelSummary.id, { includeUnpinned: true })
     : undefined;
 
   const localVideos = videos.filter((video) => {
@@ -143,31 +181,20 @@ function getOfflineChannelFallback(
     return !!getResolvedLocalPath(video.id, localPathByVideoId);
   });
 
-  return savedChannel
-    ? toSavedPlaylistChannelVideos(savedChannel, localPathByVideoId)
-    : toOfflineChannelVideos(localVideos, localPathByVideoId);
+  return {
+    playlists: toOfflineChannelPlaylists(savedChannelPlaylists),
+    videos: savedChannel
+      ? toSavedPlaylistChannelVideos(savedChannel, localPathByVideoId)
+      : toOfflineChannelVideos(localVideos, localPathByVideoId),
+    hasChannelSummary: !!savedChannelSummary,
+  };
 }
 
 function resolveThumbnailUrl(
   serverUrl: string | null,
   thumbnailUrl?: string | null
 ): string | null {
-  const trimmed = thumbnailUrl?.trim();
-  if (!trimmed) return null;
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("//")) {
-    return `https:${trimmed}`;
-  }
-  if (!serverUrl) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("/")) {
-    return `${serverUrl}${trimmed}`;
-  }
-  return `${serverUrl}/${trimmed}`;
+  return resolveRemoteAssetUrl(serverUrl, thumbnailUrl);
 }
 
 export default function TVChannelDetailScreen() {
@@ -194,6 +221,7 @@ export default function TVChannelDetailScreen() {
   const cardRefs = useRef<Array<TVFocusPressableHandle | null>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emptyMessage, setEmptyMessage] = useState("No playlists or videos");
   const [isUsingOfflineFallback, setIsUsingOfflineFallback] = useState(!serverUrl);
   const gridColumns = useMemo(() => getTVGridColumns(windowWidth), [windowWidth]);
   const pageSize = useMemo(() => getTVGridPageSize(gridColumns), [gridColumns]);
@@ -231,53 +259,125 @@ export default function TVChannelDetailScreen() {
     }
 
     setError(null);
-    const offlineFallbackVideos = getOfflineChannelFallback(
+    const offlineFallback = getOfflineChannelFallback(
       channelId,
       channelTitle,
       videos,
       localPathByVideoId
     );
+    const hasOfflinePlaylists = offlineFallback.playlists.length > 0;
+    const hasOfflineVideos = offlineFallback.videos.length > 0;
+    const hasOfflineFallback = hasOfflinePlaylists || hasOfflineVideos;
+    const offlineEmptyStateMessage = offlineFallback.hasChannelSummary
+      ? "Not connected to server. This channel detail has not been cached yet."
+      : "No playlists or videos";
 
-    try {
-      if (!serverUrl) {
-        setChannelPlaylists([]);
-        setChannelVideos(offlineFallbackVideos);
-        setDetailMode("videos");
-        setIsUsingOfflineFallback(true);
-        setPageOffset(0);
-        setFocusedGridIndex(0);
-        setIsLoading(false);
-        return;
-      }
-
-      const hasOfflineFallback = offlineFallbackVideos.length > 0;
-      setIsUsingOfflineFallback(hasOfflineFallback);
-      setChannelPlaylists([]);
-      setChannelVideos(hasOfflineFallback ? offlineFallbackVideos : []);
-      setDetailMode("videos");
+    if (!serverUrl) {
+      setChannelPlaylists(offlineFallback.playlists);
+      setChannelVideos(offlineFallback.videos);
+      setDetailMode(hasOfflinePlaylists ? "playlists" : "videos");
+      setIsUsingOfflineFallback(true);
+      setEmptyMessage(offlineEmptyStateMessage);
       setPageOffset(0);
       setFocusedGridIndex(0);
-      setIsLoading(!hasOfflineFallback);
+      setIsLoading(false);
+      return;
+    }
 
-      const [{ playlists: allPlaylists }, { videos: remoteVideos }] = await Promise.all([
+    setIsUsingOfflineFallback(hasOfflineFallback);
+    setChannelPlaylists(hasOfflinePlaylists ? offlineFallback.playlists : []);
+    setChannelVideos(hasOfflineVideos ? offlineFallback.videos : []);
+    setDetailMode(hasOfflinePlaylists ? "playlists" : "videos");
+    setEmptyMessage("No playlists or videos");
+    setPageOffset(0);
+    setFocusedGridIndex(0);
+    setIsLoading(!hasOfflineFallback);
+
+    try {
+      const [playlistsResult, channelVideosResult] = await Promise.allSettled([
         api.getPlaylists(serverUrl),
         api.getChannelVideos(serverUrl, channelId),
       ]);
+      let nextChannelPlaylists = hasOfflinePlaylists ? offlineFallback.playlists : [];
+      let nextChannelVideos = hasOfflineVideos ? offlineFallback.videos : [];
+      let hasRemoteSuccess = false;
+      let nextError: string | null = null;
 
-      const playlistsOfChannel = allPlaylists.filter(
-        (item) => item.channelId === channelId
-      );
+      if (playlistsResult.status === "fulfilled") {
+        const cachedPlaylists = await cacheRemotePlaylists(
+          serverUrl,
+          playlistsResult.value.playlists
+        );
+        nextChannelPlaylists = cachedPlaylists.filter(
+          (item) => item.channelId === channelId
+        );
+        hasRemoteSuccess = true;
+      } else {
+        nextError = getErrorMessage(playlistsResult.reason);
+      }
 
-      setChannelPlaylists(playlistsOfChannel);
-      setChannelVideos(remoteVideos);
-      setDetailMode(playlistsOfChannel.length > 0 ? "playlists" : "videos");
-      setIsUsingOfflineFallback(false);
-      setPageOffset(0);
-      setFocusedGridIndex(0);
-    } catch (nextError) {
-      if (offlineFallbackVideos.length > 0) {
+      if (channelVideosResult.status === "fulfilled") {
+        nextChannelVideos = await cacheRemoteCollectionVideos(serverUrl, {
+          kind: "channel",
+          id: channelId ?? channelTitle,
+          title: channelTitle,
+          sourceId: channelId ?? channelTitle,
+          itemCount: channelVideosResult.value.videos.length,
+          videos: channelVideosResult.value.videos,
+        });
+        hasRemoteSuccess = true;
+      } else if (!nextError) {
+        nextError = getErrorMessage(channelVideosResult.reason);
+      }
+
+      if (hasRemoteSuccess) {
+        setChannelPlaylists(nextChannelPlaylists);
+        setChannelVideos(nextChannelVideos);
+        setDetailMode(nextChannelPlaylists.length > 0 ? "playlists" : "videos");
+        setError(null);
+        setIsUsingOfflineFallback(false);
+        setEmptyMessage("No playlists or videos");
+        setPageOffset(0);
+        setFocusedGridIndex(0);
+        return;
+      }
+
+      if (hasOfflineFallback) {
+        setChannelPlaylists(offlineFallback.playlists);
+        setChannelVideos(offlineFallback.videos);
+        setDetailMode(hasOfflinePlaylists ? "playlists" : "videos");
         setError(null);
         setIsUsingOfflineFallback(true);
+        setEmptyMessage(offlineEmptyStateMessage);
+        return;
+      }
+
+      if (offlineFallback.hasChannelSummary) {
+        setChannelPlaylists([]);
+        setChannelVideos([]);
+        setDetailMode("videos");
+        setError(null);
+        setIsUsingOfflineFallback(true);
+        setEmptyMessage(offlineEmptyStateMessage);
+        return;
+      }
+
+      setError(nextError ?? "Failed to load channel");
+    } catch (nextError) {
+      if (hasOfflineFallback) {
+        setChannelPlaylists(offlineFallback.playlists);
+        setChannelVideos(offlineFallback.videos);
+        setDetailMode(hasOfflinePlaylists ? "playlists" : "videos");
+        setError(null);
+        setIsUsingOfflineFallback(true);
+        setEmptyMessage(offlineEmptyStateMessage);
+      } else if (offlineFallback.hasChannelSummary) {
+        setChannelPlaylists([]);
+        setChannelVideos([]);
+        setDetailMode("videos");
+        setError(null);
+        setIsUsingOfflineFallback(true);
+        setEmptyMessage(offlineEmptyStateMessage);
       } else {
         setError(getErrorMessage(nextError));
       }
@@ -290,26 +390,107 @@ export default function TVChannelDetailScreen() {
     void loadChannelData();
   }, [loadChannelData]);
 
-  const playPlaylist = useCallback(
-    async (playlistId: string, playlistTitle: string) => {
-      if (!serverUrl) return;
+  const playCachedPlaylist = useCallback(
+    (cachedPlaylistId: string, playlistId: string, playlistTitle: string): boolean => {
+      const savedPlaylist = getSavedPlaylistWithItems(cachedPlaylistId, {
+        includeUnpinned: true,
+      });
+      if (!savedPlaylist || savedPlaylist.items.length === 0) {
+        Alert.alert(
+          "Offline mode",
+          "This playlist is not cached yet. Reconnect to desktop to load it first."
+        );
+        return true;
+      }
 
-      const response = await api.getPlaylistVideos(serverUrl, playlistId);
-      const streamingVideos = toStreamingVideos(response.videos, localPathByVideoId, serverUrl);
-      if (streamingVideos.length === 0) return;
+      const playableVideos = savedPlaylist.items
+        .map<StreamingVideo>((item) => ({
+          id: item.videoId,
+          title: item.title,
+          channelTitle: item.channelTitle,
+          duration: item.duration,
+          thumbnailUrl: item.thumbnailUrl ?? undefined,
+          localPath: getResolvedLocalPath(item.videoId, localPathByVideoId),
+        }))
+        .filter((item) => !!item.localPath);
+
+      if (playableVideos.length === 0) {
+        Alert.alert(
+          "Offline mode",
+          "Download videos in this playlist first or reconnect to desktop to stream."
+        );
+        return true;
+      }
 
       const nextPlaylistId = `playlist-${playlistId}`;
       upsertRecentPlaylist({
         playlistId: nextPlaylistId,
         title: playlistTitle,
-        videos: streamingVideos,
+        videos: playableVideos,
         startIndex: 0,
-        serverUrl,
+        serverUrl: null,
       });
-      startPlaylist(nextPlaylistId, playlistTitle, streamingVideos, 0, serverUrl);
-      router.push(`/(tv)/player/${streamingVideos[0].id}` as Href);
+      startPlaylist(nextPlaylistId, playlistTitle, playableVideos, 0);
+      router.push(`/(tv)/player/${playableVideos[0].id}` as Href);
+      return true;
     },
-    [localPathByVideoId, serverUrl, startPlaylist, upsertRecentPlaylist]
+    [localPathByVideoId, startPlaylist, upsertRecentPlaylist]
+  );
+
+  const playPlaylist = useCallback(
+    async (playlistId: string, playlistTitle: string) => {
+      const cachedPlaylistId = buildCachedPlaylistId("playlist", playlistId);
+      if (!serverUrl || isUsingOfflineFallback) {
+        playCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle);
+        return;
+      }
+
+      try {
+        const response = await api.getPlaylistVideos(serverUrl, playlistId);
+        const playlistMeta = channelPlaylists.find(
+          (item) => item.playlistId === playlistId
+        );
+        const normalizedVideos = await cacheRemoteCollectionVideos(serverUrl, {
+          kind: "playlist",
+          id: playlistId,
+          title: playlistTitle,
+          sourceId: playlistMeta?.channelId ?? channelId ?? null,
+          thumbnailUrl: playlistMeta?.thumbnailUrl,
+          thumbnailFallbackUrl: api.getPlaylistThumbnailUrl(serverUrl, playlistId),
+          itemCount: playlistMeta?.itemCount,
+          videos: response.videos,
+        });
+        const streamingVideos = toStreamingVideos(
+          normalizedVideos,
+          localPathByVideoId,
+          serverUrl
+        );
+        if (streamingVideos.length === 0) return;
+
+        const nextPlaylistId = `playlist-${playlistId}`;
+        upsertRecentPlaylist({
+          playlistId: nextPlaylistId,
+          title: playlistTitle,
+          videos: streamingVideos,
+          startIndex: 0,
+          serverUrl,
+        });
+        startPlaylist(nextPlaylistId, playlistTitle, streamingVideos, 0, serverUrl);
+        router.push(`/(tv)/player/${streamingVideos[0].id}` as Href);
+      } catch {
+        playCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle);
+      }
+    },
+    [
+      channelId,
+      channelPlaylists,
+      isUsingOfflineFallback,
+      localPathByVideoId,
+      playCachedPlaylist,
+      serverUrl,
+      startPlaylist,
+      upsertRecentPlaylist,
+    ]
   );
 
   const playFromChannelVideos = useCallback(
@@ -533,7 +714,7 @@ export default function TVChannelDetailScreen() {
 
       {!isLoading && !error && cards.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No playlists or videos</Text>
+          <Text style={styles.emptyText}>{emptyMessage}</Text>
         </View>
       ) : null}
 
