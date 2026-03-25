@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   DeviceEventEmitter,
   FlatList,
   StyleSheet,
@@ -65,6 +66,11 @@ type OfflineChannelFallback = {
   playlists: RemotePlaylist[];
   videos: RemoteVideoWithStatus[];
   hasChannelSummary: boolean;
+};
+
+type ActivePlaylistContext = {
+  id: string;
+  title: string;
 };
 
 function getErrorMessage(error: unknown): string {
@@ -203,6 +209,7 @@ export default function TVChannelDetailScreen() {
   const channelId = Array.isArray(id) ? id[0] : id;
   const channelTitle = (Array.isArray(title) ? title[0] : title) ?? channelId ?? "";
   const serverUrl = useConnectionStore((state) => state.serverUrl);
+  const disconnect = useConnectionStore((state) => state.disconnect);
   const startPlaylist = usePlaybackStore((state) => state.startPlaylist);
   const upsertRecentPlaylist = useTVHistoryStore(
     (state) => state.upsertRecentPlaylist
@@ -223,6 +230,9 @@ export default function TVChannelDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [emptyMessage, setEmptyMessage] = useState("No playlists or videos");
   const [isUsingOfflineFallback, setIsUsingOfflineFallback] = useState(!serverUrl);
+  const [activePlaylist, setActivePlaylist] =
+    useState<ActivePlaylistContext | null>(null);
+  const [isResolvingPlaylist, setIsResolvingPlaylist] = useState(false);
   const gridColumns = useMemo(() => getTVGridColumns(windowWidth), [windowWidth]);
   const pageSize = useMemo(() => getTVGridPageSize(gridColumns), [gridColumns]);
   const gridCardWidth = useMemo(
@@ -259,6 +269,8 @@ export default function TVChannelDetailScreen() {
     }
 
     setError(null);
+    setActivePlaylist(null);
+    setIsResolvingPlaylist(false);
     const offlineFallback = getOfflineChannelFallback(
       channelId,
       channelTitle,
@@ -390,7 +402,30 @@ export default function TVChannelDetailScreen() {
     void loadChannelData();
   }, [loadChannelData]);
 
-  const playCachedPlaylist = useCallback(
+  const showPlaylistVideos = useCallback(
+    (
+      videos: RemoteVideoWithStatus[],
+      playlistId: string,
+      playlistTitle: string,
+      useOfflineFallback: boolean
+    ) => {
+      setChannelVideos(videos);
+      setActivePlaylist({
+        id: playlistId,
+        title: playlistTitle,
+      });
+      setDetailMode("videos");
+      setIsUsingOfflineFallback(useOfflineFallback);
+      setEmptyMessage("No videos in this playlist");
+      setPageOffset(0);
+      setFocusedGridIndex(0);
+      setIsGridFocused(true);
+      setError(null);
+    },
+    []
+  );
+
+  const openCachedPlaylist = useCallback(
     (cachedPlaylistId: string, playlistId: string, playlistTitle: string): boolean => {
       const savedPlaylist = getSavedPlaylistWithItems(cachedPlaylistId, {
         includeUnpinned: true,
@@ -400,51 +435,29 @@ export default function TVChannelDetailScreen() {
           "Offline mode",
           "This playlist is not cached yet. Reconnect to desktop to load it first."
         );
-        return true;
+        return false;
       }
 
-      const playableVideos = savedPlaylist.items
-        .map<StreamingVideo>((item) => ({
-          id: item.videoId,
-          title: item.title,
-          channelTitle: item.channelTitle,
-          duration: item.duration,
-          thumbnailUrl: item.thumbnailUrl ?? undefined,
-          localPath: getResolvedLocalPath(item.videoId, localPathByVideoId),
-        }))
-        .filter((item) => !!item.localPath);
-
-      if (playableVideos.length === 0) {
-        Alert.alert(
-          "Offline mode",
-          "Download videos in this playlist first or reconnect to desktop to stream."
-        );
-        return true;
-      }
-
-      const nextPlaylistId = `playlist-${playlistId}`;
-      upsertRecentPlaylist({
-        playlistId: nextPlaylistId,
-        title: playlistTitle,
-        videos: playableVideos,
-        startIndex: 0,
-        serverUrl: null,
-      });
-      startPlaylist(nextPlaylistId, playlistTitle, playableVideos, 0);
-      router.push(`/(tv)/player/${playableVideos[0].id}` as Href);
+      showPlaylistVideos(
+        toSavedPlaylistChannelVideos(savedPlaylist, localPathByVideoId),
+        playlistId,
+        playlistTitle,
+        true
+      );
       return true;
     },
-    [localPathByVideoId, startPlaylist, upsertRecentPlaylist]
+    [localPathByVideoId, showPlaylistVideos]
   );
 
-  const playPlaylist = useCallback(
+  const openPlaylist = useCallback(
     async (playlistId: string, playlistTitle: string) => {
       const cachedPlaylistId = buildCachedPlaylistId("playlist", playlistId);
       if (!serverUrl || isUsingOfflineFallback) {
-        playCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle);
+        openCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle);
         return;
       }
 
+      setIsResolvingPlaylist(true);
       try {
         const response = await api.getPlaylistVideos(serverUrl, playlistId);
         const playlistMeta = channelPlaylists.find(
@@ -460,36 +473,29 @@ export default function TVChannelDetailScreen() {
           itemCount: playlistMeta?.itemCount,
           videos: response.videos,
         });
-        const streamingVideos = toStreamingVideos(
+        showPlaylistVideos(
           normalizedVideos,
-          localPathByVideoId,
-          serverUrl
+          playlistId,
+          playlistTitle,
+          false
         );
-        if (streamingVideos.length === 0) return;
-
-        const nextPlaylistId = `playlist-${playlistId}`;
-        upsertRecentPlaylist({
-          playlistId: nextPlaylistId,
-          title: playlistTitle,
-          videos: streamingVideos,
-          startIndex: 0,
-          serverUrl,
-        });
-        startPlaylist(nextPlaylistId, playlistTitle, streamingVideos, 0, serverUrl);
-        router.push(`/(tv)/player/${streamingVideos[0].id}` as Href);
       } catch {
-        playCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle);
+        disconnect();
+        if (openCachedPlaylist(cachedPlaylistId, playlistId, playlistTitle)) {
+          return;
+        }
+      } finally {
+        setIsResolvingPlaylist(false);
       }
     },
     [
       channelId,
       channelPlaylists,
+      disconnect,
       isUsingOfflineFallback,
-      localPathByVideoId,
-      playCachedPlaylist,
+      openCachedPlaylist,
       serverUrl,
-      startPlaylist,
-      upsertRecentPlaylist,
+      showPlaylistVideos,
     ]
   );
 
@@ -518,17 +524,20 @@ export default function TVChannelDetailScreen() {
       const startIndex = playableVideos.findIndex((item) => item.id === videoId);
       if (startIndex < 0 || playableVideos.length === 0) return;
 
-      const nextPlaylistId = `channel-${channelId ?? channelTitle}`;
+      const playbackPlaylistId = activePlaylist
+        ? `playlist-${activePlaylist.id}`
+        : `channel-${channelId ?? channelTitle}`;
+      const playbackTitle = activePlaylist?.title ?? channelTitle ?? "Channel";
       upsertRecentPlaylist({
-        playlistId: nextPlaylistId,
-        title: channelTitle || "Channel",
+        playlistId: playbackPlaylistId,
+        title: playbackTitle,
         videos: playableVideos,
         startIndex,
         serverUrl: canStream ? serverUrl : null,
       });
       startPlaylist(
-        nextPlaylistId,
-        channelTitle || "Channel",
+        playbackPlaylistId,
+        playbackTitle,
         playableVideos,
         startIndex,
         canStream ? serverUrl : undefined
@@ -539,6 +548,7 @@ export default function TVChannelDetailScreen() {
       channelVideos,
       channelId,
       channelTitle,
+      activePlaylist,
       localPathByVideoId,
       isUsingOfflineFallback,
       serverUrl,
@@ -546,6 +556,31 @@ export default function TVChannelDetailScreen() {
       upsertRecentPlaylist,
     ]
   );
+
+  const handleBack = useCallback(() => {
+    if (detailMode === "videos" && activePlaylist) {
+      setDetailMode("playlists");
+      setActivePlaylist(null);
+      setPageOffset(0);
+      setFocusedGridIndex(0);
+      setIsGridFocused(true);
+      setIsResolvingPlaylist(false);
+      return true;
+    }
+
+    router.back();
+    return true;
+  }, [activePlaylist, detailMode]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      handleBack
+    );
+    return () => {
+      subscription.remove();
+    };
+  }, [handleBack]);
 
   const cards = useMemo<BaseGridCard[]>(() => {
     const thumbnailServerUrl = isUsingOfflineFallback ? null : serverUrl;
@@ -682,7 +717,7 @@ export default function TVChannelDetailScreen() {
           style={styles.backButton}
           hasTVPreferredFocus
           onFocus={() => setIsGridFocused(false)}
-          onPress={() => router.back()}
+          onPress={handleBack}
         >
           <Text style={styles.backButtonText}>Back</Text>
         </TVFocusPressable>
@@ -698,6 +733,12 @@ export default function TVChannelDetailScreen() {
 
       {isLoading ? (
         <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color="#ffd93d" />
+        </View>
+      ) : null}
+
+      {!isLoading && isResolvingPlaylist ? (
+        <View style={styles.selectionLoader}>
           <ActivityIndicator size="large" color="#ffd93d" />
         </View>
       ) : null}
@@ -753,7 +794,7 @@ export default function TVChannelDetailScreen() {
                 }}
                 onPress={() => {
                   if (item.type === "playlist") {
-                    void playPlaylist(item.id, item.title);
+                    void openPlaylist(item.id, item.title);
                   } else {
                     playFromChannelVideos(item.id);
                   }
@@ -821,6 +862,12 @@ const styles = StyleSheet.create({
   loaderWrap: {
     marginTop: 48,
     alignItems: "center",
+  },
+  selectionLoader: {
+    position: "absolute",
+    top: 96,
+    right: TV_GRID_SIDE_PADDING,
+    zIndex: 20,
   },
   emptyState: {
     marginTop: 24,
